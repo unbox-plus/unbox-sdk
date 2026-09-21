@@ -1,0 +1,59 @@
+{
+  "name": "@unbox-plus/sdk",
+  "version": "0.1.0",
+  "description": "SDK oficial da API de parceiros da Unbox (headless commerce): catálogo, carrinho, checkout, pedido, área do cliente, assinaturas e webhooks",
+  "author": {
+    "name": "Unbox Development Team",
+    "email": "devs@unbox.com.br",
+    "url": "https://unbox.com.br"
+  },
+  "license": "SEE LICENSE IN LICENSE.md",
+  "keywords": [
+    "unbox",
+    "headless",
+    "ecommerce",
+    "storefront",
+    "graphql",
+    "sdk"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./webhooks": {
+      "types": "./dist/webhooks.d.ts",
+      "default": "./dist/webhooks.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "^5.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/unbox-plus/unbox-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/unbox-plus/unbox-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
