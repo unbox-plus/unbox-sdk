@@ -120,6 +120,24 @@ export class UnboxCustomerClient {
     return d.customerOrders;
   }
 
+  /**
+   * Os slugs dos produtos dos pedidos PAGOS (em processamento ou concluídos): é o que a personalização por
+   * público confere no login (`lib/publico-do-cliente.ts`). Seleção mínima de propósito, porque roda com teto
+   * de tempo; e sem `summary`, que sem `payments` apaga a resposta inteira (ver `orders`).
+   */
+  async purchasedProducts(first = 20): Promise<string[]> {
+    const q = `query($first:Int){ customerOrders(first:$first){ nodes{ status fulfillmentGroups{ items{ nodes{ productSlug } } } } } }`;
+    const d = await this.gql<{ customerOrders: { nodes?: any[] } | null }>(q, { first });
+    const slugs = new Set<string>();
+    for (const o of d.customerOrders?.nodes ?? []) {
+      if (o?.status !== "PROCESSING" && o?.status !== "COMPLETED") continue;
+      for (const g of o?.fulfillmentGroups ?? []) {
+        for (const i of g?.items?.nodes ?? []) if (typeof i?.productSlug === "string" && i.productSlug) slugs.add(i.productSlug.toLowerCase());
+      }
+    }
+    return [...slugs];
+  }
+
   async order(referenceId: string): Promise<any> {
     // Notas do schema (contexto de cliente):
     //   · payments.data (PaymentData) fica FORA.
