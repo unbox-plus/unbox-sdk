@@ -212,7 +212,7 @@ Estão escritas no código, ao lado de cada chamada. As que mais custaram:
 
 ## Migrar uma loja que tem `lib/unbox/` internalizado
 
-Lojas geradas pelo CLI até a v0.22 têm a cópia dentro de `lib/unbox/`. Para passar ao pacote:
+Lojas geradas pelo CLI até a v0.24 têm a cópia dentro de `lib/unbox/`. Para passar ao pacote:
 
 1. `npm install @unbox-plus/sdk`
 2. Apague `lib/unbox/client.ts`, `customer.ts`, `types.ts`, `errors.ts`, `pedido.ts`,
