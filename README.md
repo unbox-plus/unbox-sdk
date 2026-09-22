@@ -137,7 +137,7 @@ loja não há contexto de loja, sem o do cliente não há conta.
 
 `me`, `updateAccount`, `orders`, `order`, `subscriptions`, `subscription`, `subscriptionCycles`,
 `pause`, `skipNextCycle`, `cancel`, `updateItems`, `updateCard`, `updateAddress`,
-`addressBooks`, `upsertAddress`, `deleteAddresses`.
+`addressBooks`, `upsertAddress`, `deleteAddresses`, `purchasedProducts`.
 
 ### Feedback ao cliente final (PT-BR)
 
