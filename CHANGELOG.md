@@ -3,7 +3,7 @@
 ### v0.1.0 — a integração com a Unbox sai do template e vira pacote
 
 Primeira versão. O conteúdo vem de `lib/unbox/*.ts` do template do
-[`@unbox-plus/cli`](https://github.com/unbox-plus/unbox-cli) v0.22.0, que era **copiado** para
+[`@unbox-plus/cli`](https://github.com/unbox-plus/unbox-cli) v0.24.0, que era **copiado** para
 cada loja gerada: toda correção na integração exigia substituir arquivo a arquivo em cada loja no
 ar, uma por uma, e antes disso descobrir quais lojas estavam atrás. Agora é
 `npm install @unbox-plus/sdk@latest`, sem tocar em arquivo nenhum da loja.

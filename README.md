@@ -9,7 +9,7 @@ que é rota, o que é cache e o que é componente é a loja.
 
 ## Por que ele existe
 
-Até a v0.22 do [`@unbox-plus/cli`](https://github.com/unbox-plus/unbox-cli) esse código vivia
+Até a v0.24 do [`@unbox-plus/cli`](https://github.com/unbox-plus/unbox-cli) esse código vivia
 dentro do template, em `lib/unbox/*.ts`, e era **copiado** para cada loja gerada. Consequência:
 toda correção na integração, inclusive as de segurança e as de cobrança, exigia substituir
 arquivo a arquivo em cada loja no ar, uma por uma, e descobrir quais lojas estavam atrás.
