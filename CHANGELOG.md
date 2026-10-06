@@ -1,5 +1,30 @@
 ## Changelog
 
+### v0.2.0 — o vocabulário interno do pacote fica em inglês
+
+**Nada mudou na API nem no comportamento.** Mesmos exports, mesmas assinaturas, mesmas consultas
+ao gateway: atualizar de 0.1.0 para 0.2.0 é só o `npm install`, sem tocar em arquivo nenhum da
+loja. O que mudou está inteiro abaixo da fronteira do pacote, e a razão é que o código nasceu
+com vocabulário misturado — identificadores em português colados num schema GraphQL em inglês —
+e cada leitura cobrava uma tradução no meio do caminho.
+
+- **`src/pedido.ts` virou `src/order.ts`.** É módulo interno: o `exports` do pacote publica só
+  `.` e `./webhooks`, então `withLeanSelection`, `normalizeThumbnails`, `isSessionError`,
+  `ITEM_IMAGES`, `DETAILED_SUMMARY` e `SHIPPING_AND_TRACKING` continuam chegando pelo índice,
+  no mesmo lugar de sempre.
+- **Os nomes de módulo e os auxiliares privados foram traduzidos.**
+  `ehUniaoNaoResolvida` → `isUnionNotResolved`, `semOcultos` → `onlyVisibles`,
+  `esquemaAceito` → `acceptedScheme`, `ERROS_OAUTH` → `OAUTH_ERRORS`, mais as variáveis locais
+  da montagem da consulta de pedido (`selecao`/`rica`/`endereco` → `selection`/`rich`/`address`).
+  Nenhum deles é exportado, e nenhum aparece em mensagem de erro que a loja leia.
+- **`connectUnboxStore(credentials)`:** o parâmetro trocou de nome, e isso aparece na dica do
+  editor e na documentação. A chamada é posicional, então não há nada a mudar na loja. O
+  docblock passou a dizer "conecta à loja", que é o que a função faz desde que deixou de se
+  chamar `createUnboxStore`.
+- **Comentário e texto de tela seguem em PT-BR.** As peculiaridades do gateway escritas ao lado
+  de cada chamada, a tradução de erro e os rótulos de status têm leitor humano — quem mantém a
+  loja e quem está comprando. Só o vocabulário do código mudou de idioma.
+
 ### v0.1.0 — a integração com a Unbox sai do template e vira pacote
 
 Primeira versão. O conteúdo vem de `lib/unbox/*.ts` do template do

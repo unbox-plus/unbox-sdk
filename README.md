@@ -87,7 +87,7 @@ shopId**. As duas exceções são campos que o próprio schema declara: o `shopI
 
 ## O que tem dentro
 
-### `connectUnboxStore(credenciais, { tokenStore? })`
+### `connectUnboxStore(credentials, { tokenStore? })`
 
 | Método | Para |
 |---|---|
@@ -107,7 +107,7 @@ Em serverless o cache é por lambda: um signIn por lambda fria. Para compartilha
 passe um `tokenStore` (Vercel KV, Edge Config, Redis) — é o único ponto que muda:
 
 ```ts
-connectUnboxStore(credenciais, {
+connectUnboxStore(credentials, {
   tokenStore: {
     read: () => kv.get("unbox:token"),
     write: (t) => kv.set("unbox:token", t),
