@@ -34,10 +34,10 @@ Runtime; a verificação de webhook (`node:crypto`) é a única parte que exige 
 ## Uso
 
 ```ts
-import { createUnboxStore } from "@unbox-plus/sdk";
+import { connectUnboxStore } from "@unbox-plus/sdk";
 
 // Uma instância por processo: um signIn, o token da loja em cache, re-signin quando vence.
-export const unbox = createUnboxStore(() => ({
+export const unbox = connectUnboxStore(() => ({
   partnerApiKey: process.env.UNBOX_PARTNER_API_KEY!, // do PARCEIRO, vale para todas as lojas dele
   user: process.env.UNBOX_USER!,                     // QUAL loja é o user/senha que diz
   pass: process.env.UNBOX_PASS!,
@@ -87,7 +87,7 @@ shopId**. As duas exceções são campos que o próprio schema declara: o `shopI
 
 ## O que tem dentro
 
-### `createUnboxStore(credenciais, { tokenStore? })`
+### `connectUnboxStore(credenciais, { tokenStore? })`
 
 | Método | Para |
 |---|---|
@@ -107,7 +107,7 @@ Em serverless o cache é por lambda: um signIn por lambda fria. Para compartilha
 passe um `tokenStore` (Vercel KV, Edge Config, Redis) — é o único ponto que muda:
 
 ```ts
-createUnboxStore(credenciais, {
+connectUnboxStore(credenciais, {
   tokenStore: {
     read: () => kv.get("unbox:token"),
     write: (t) => kv.set("unbox:token", t),

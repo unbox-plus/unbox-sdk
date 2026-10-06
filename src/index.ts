@@ -42,7 +42,7 @@ export {
 } from "./pedido.js";
 
 export {
-  createUnboxStore, credentialsFromEnv, hasUnboxCredentials, loadAllCatalogItems,
+  connectUnboxStore, credentialsFromEnv, hasUnboxCredentials, loadAllCatalogItems,
   MISSING_CREDENTIALS,
 } from "./store.js";
 export type {

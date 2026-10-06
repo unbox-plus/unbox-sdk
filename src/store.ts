@@ -4,14 +4,14 @@
 // a chamada mais lenta da API (passa pela borda com captcha); pedir um por request transforma
 // cada página da loja em duas chamadas e estoura o rate-limit do gateway num pico de tráfego.
 //
-// O cache vive no MÓDULO da instância criada por `createUnboxStore`: em dev e em servidor único
+// O cache vive no MÓDULO da instância criada por `connectUnboxStore`: em dev e em servidor único
 // isso basta. Em serverless (Vercel), cada lambda tem o seu — é um signIn por lambda fria, não um
 // por request. Para compartilhar entre lambdas, passe um `tokenStore` (Vercel KV, Edge Config,
 // Redis): é o único ponto que precisa mudar.
 //
 // Este arquivo NÃO lê `process.env` por conta própria (fora do helper explícito
 // `credentialsFromEnv`). Quem monta a loja decide de onde vêm as credenciais, e é por isso que o
-// SDK é testável sem ambiente: `createUnboxStore({ partnerApiKey: "...", user, pass })`.
+// SDK é testável sem ambiente: `connectUnboxStore({ partnerApiKey: "...", user, pass })`.
 
 import { UnboxClient, UnboxError } from "./client.js";
 import { UnboxCustomerClient } from "./customer.js";
@@ -110,7 +110,7 @@ export const MISSING_CREDENTIALS =
  * As credenciais podem vir como função para serem lidas no primeiro uso, e não no import — é
  * assim que o Next consegue importar o módulo num build sem ambiente.
  */
-export function createUnboxStore(
+export function connectUnboxStore(
   credenciais: UnboxCredentials | (() => UnboxCredentials),
   opts: { tokenStore?: UnboxTokenStore } = {},
 ): UnboxStore {

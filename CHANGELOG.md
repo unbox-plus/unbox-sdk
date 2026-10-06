@@ -15,7 +15,7 @@ cada chamada. Migração de uma loja existente: passo a passo no README.
 
 O que mudou de forma na fronteira do pacote:
 
-- **`createUnboxStore(credenciais)` substitui o `lib/unbox/store.ts` da loja.** O cache de token
+- **`connectUnboxStore(credenciais)` substitui o `lib/unbox/store.ts` da loja.** O cache de token
   (um signIn, renovação com 1h de folga, dedup das chamadas concorrentes, re-signin uma vez em
   token vencido) virou uma instância em vez de estado de módulo, e as credenciais entram
   explícitas, como objeto ou como função. **O pacote não lê `process.env` por conta própria** —
