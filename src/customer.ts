@@ -13,7 +13,7 @@
 // schema declara explicitamente (uma conta pode assinar em mais de uma loja do mesmo parceiro).
 
 import { UnboxError, withFulfillmentGroupAddress, type UnboxClient } from "./client.js";
-import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./pedido.js";
+import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
 import type { AddressInput } from "./types.js";
 
 const RECURRING_FIELDS = `

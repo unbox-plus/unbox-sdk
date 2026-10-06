@@ -32,7 +32,7 @@ import type {
   PlaceOrderParams, FulfillmentOption, CatalogProduct, Connection,
   PaymentLinkConstraints, PaymentLinkItemInput, DeviceInput, SimpleInventoryInfo,
 } from "./types.js";
-import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./pedido.js";
+import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
 
 const DEFAULTS = {
   // API pública de PARCEIROS — gateway na frente do core. Uma api key por parceiro
@@ -51,7 +51,7 @@ const DEFAULTS = {
 export const FULFILLMENT_GROUP_DATA =
   "data{__typename ... on ShippingOrderFulfillmentGroupData { shippingAddress{fullName address1 number neighborhood city region postal} } }";
 
-function ehUniaoNaoResolvida(e: unknown): boolean {
+function isUnionNotResolved(e: unknown): boolean {
   const msgs = e instanceof UnboxError
     ? [e.message, ...(e.errors ?? []).map((x: any) => x?.message ?? "")].join(" ")
     : String(e);
@@ -63,7 +63,7 @@ export async function withFulfillmentGroupAddress<T>(exec: (address: string) => 
   try {
     return await exec(FULFILLMENT_GROUP_DATA);
   } catch (e) {
-    if (!ehUniaoNaoResolvida(e)) throw e;
+    if (!isUnionNotResolved(e)) throw e;
     console.warn("[unbox] fulfillmentGroups.data não resolveu no servidor: repetindo a consulta sem o endereço de entrega.");
     return await exec("");
   }
@@ -100,14 +100,14 @@ export class UnboxError extends Error {
  * editor). `totalCount` desconta o que saiu desta página, senão o contador e a paginação da busca
  * prometem resultado que a página não mostra.
  */
-function semOcultos<T extends { nodes?: any[]; totalCount?: number }>(conn: T): T {
+function onlyVisibles<T extends { nodes?: any[]; totalCount?: number }>(conn: T): T {
   const nodes = conn?.nodes ?? [];
-  const visiveis = nodes.filter((n: any) => (n?.product ?? n)?.isVisible !== false);
-  if (visiveis.length === nodes.length) return conn;
+  const visibles = nodes.filter((n: any) => (n?.product ?? n)?.isVisible !== false);
+  if (visibles.length === nodes.length) return conn;
   return {
     ...conn,
-    nodes: visiveis,
-    totalCount: typeof conn.totalCount === "number" ? Math.max(0, conn.totalCount - (nodes.length - visiveis.length)) : conn.totalCount,
+    nodes: visibles,
+    totalCount: typeof conn.totalCount === "number" ? Math.max(0, conn.totalCount - (nodes.length - visibles.length)) : conn.totalCount,
   };
 }
 
@@ -120,7 +120,7 @@ function isAuthSchemeError(errors: any[]): boolean {
 /** Formato do Authorization que o gateway aceitou. É propriedade da API, não da instância, e o
  *  `getStoreClient()` da loja (ver store.ts) cria um UnboxClient NOVO a cada request: guardado no
  *  módulo, o formato é medido uma vez por processo em vez de nunca chegar a ser memorizado. */
-let esquemaAceito: "bearer" | "raw" | null = null;
+let acceptedScheme: "bearer" | "raw" | null = null;
 
 export class UnboxClient {
   partnerApiKey: string;
@@ -193,8 +193,8 @@ export class UnboxClient {
   ): Promise<T> {
     const token = opts.token ?? this.token;
     if (!token) throw new UnboxError("sem token da loja: chame signIn() ou setToken()");
-    const mutacao = /^\s*mutation\b/.test(query);
-    if (mutacao && !esquemaAceito) {
+    const isMutation = /^\s*mutation\b/.test(query);
+    if (isMutation && !acceptedScheme) {
       await this.gql(`query{ shopBySlug{ _id } }`, {}, { token }).catch(() => null);
     }
     const attempt = async (scheme: "bearer" | "raw"): Promise<{ json: any }> => {
@@ -222,15 +222,15 @@ export class UnboxClient {
       const json = await res.json().catch(() => ({ errors: [{ message: `resposta que não é JSON (HTTP ${res.status})` }] }));
       return { json };
     };
-    const primeiro = esquemaAceito ?? "raw";
+    const primeiro = acceptedScheme ?? "raw";
     let { json } = await attempt(primeiro);
     if (!json.errors?.length) {
-      esquemaAceito = primeiro;
-    } else if (!esquemaAceito && !mutacao && isAuthSchemeError(json.errors)) {
+      acceptedScheme = primeiro;
+    } else if (!acceptedScheme && !isMutation && isAuthSchemeError(json.errors)) {
       const outro = primeiro === "raw" ? "bearer" : "raw";
       const segunda = await attempt(outro);
       if (!segunda.json.errors?.length) {
-        esquemaAceito = outro;
+        acceptedScheme = outro;
         console.warn(`[unbox] o gateway aceitou o Authorization no formato "${outro}", e ele fica memorizado`);
         json = segunda.json;
       }
@@ -274,7 +274,7 @@ export class UnboxClient {
         }}}
       }}`;
     const d = await this.gql<{ catalogItems: any }>(q, vars);
-    return semOcultos(d.catalogItems);
+    return onlyVisibles(d.catalogItems);
   }
 
   private static PDP_PRODUCT_FIELDS = `_id productId title pageTitle slug description additionalInformation productType
@@ -620,22 +620,22 @@ export class UnboxClient {
     //     (OrderTrackingData { code, url, event }).
     //   · fora displayStatus e payments.data, resolvedores que derrubam a consulta inteira.
     //   · `payments` sempre junto de `summary` (ver customer.ts, orders()).
-    const selecao = (endereco: string, rica: boolean) => `query($id:ID!){ orderByReferenceId(id:$id){
-          _id referenceId status email${rica ? " createdAt" : ""}
-          summary{total{amount displayAmount}${rica ? DETAILED_SUMMARY : ""}}
-          payments{displayName mode processor isCaptured cardBrand captureErrorMessage amount{displayAmount}${rica ? " status{status}" : ""}}
+    const selection = (address: string, rich: boolean) => `query($id:ID!){ orderByReferenceId(id:$id){
+          _id referenceId status email${rich ? " createdAt" : ""}
+          summary{total{amount displayAmount}${rich ? DETAILED_SUMMARY : ""}}
+          payments{displayName mode processor isCaptured cardBrand captureErrorMessage amount{displayAmount}${rich ? " status{status}" : ""}}
           fulfillmentGroups{
             status type trackingCode
-            ${rica ? SHIPPING_AND_TRACKING : ""}
-            ${endereco}
+            ${rich ? SHIPPING_AND_TRACKING : ""}
+            ${address}
             items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}}}
           }
           invoiceIssued dispatched delivered
           recurringOrderId } }`;
 
-    const consulta = (rica: boolean) => withFulfillmentGroupAddress((endereco) =>
-      this.gql<{ orderByReferenceId: any }>(selecao(endereco, rica), { id: referenceId }));
-    const d = await withLeanSelection("orderByReferenceId", () => consulta(true), () => consulta(false));
+    const query = (rich: boolean) => withFulfillmentGroupAddress((address) =>
+      this.gql<{ orderByReferenceId: any }>(selection(address, rich), { id: referenceId }));
+    const d = await withLeanSelection("orderByReferenceId", () => query(true), () => query(false));
     return normalizeThumbnails(d.orderByReferenceId);
   }
 
