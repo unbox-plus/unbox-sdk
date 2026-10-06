@@ -52,7 +52,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
  *  devolve um corpo OAuth (`{"error":"invalid_grant","error_description":"Wrong email or
  *  verification code."}`). Sem este dicionário caía no fallback, e quem digitou um código
  *  expirado lia "Algo deu errado", redigitava o MESMO código e desistia (caso real). */
-const ERROS_OAUTH: [RegExp, string][] = [
+const OAUTH_ERRORS: [RegExp, string][] = [
   [/expired_token|code has expired|c[oó]digo expirad/i, "Este código expirou. Peça um novo."],
   [/invalid_grant|wrong email or verification code/i, "Código incorreto ou expirado. Peça um novo código."],
   [/too many|rate.?limit/i, "Muitas tentativas. Aguarde um instante e tente de novo."],
@@ -74,7 +74,7 @@ export function friendlyError(err: unknown): string {
     raw = o.errors?.[0]?.message ?? o.message ?? String(err);
   } else raw = String(err);
   // O corpo OAuth do login por código não casa com nenhum CÓDIGO_ERRO: testar antes do dicionário.
-  for (const [rx, msg] of ERROS_OAUTH) if (rx.test(raw)) return msg;
+  for (const [rx, msg] of OAUTH_ERRORS) if (rx.test(raw)) return msg;
   if (ERROR_MESSAGES[raw]) return ERROR_MESSAGES[raw];
   for (const code of Object.keys(ERROR_MESSAGES)) {
     if (raw.includes(code)) return ERROR_MESSAGES[code];

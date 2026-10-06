@@ -105,16 +105,16 @@ export const MISSING_CREDENTIALS =
   "[unbox] credenciais ausentes (UNBOX_PARTNER_API_KEY/UNBOX_USER/UNBOX_PASS) — preencha .env.local. Rodando em modo mockup.";
 
 /**
- * Cria a loja: uma instância, um cache de token, um signIn.
+ * Conecta à loja: uma instância, um cache de token, um signIn.
  *
  * As credenciais podem vir como função para serem lidas no primeiro uso, e não no import — é
  * assim que o Next consegue importar o módulo num build sem ambiente.
  */
 export function connectUnboxStore(
-  credenciais: UnboxCredentials | (() => UnboxCredentials),
+  credentials: UnboxCredentials | (() => UnboxCredentials),
   opts: { tokenStore?: UnboxTokenStore } = {},
 ): UnboxStore {
-  const ler = (): UnboxCredentials => (typeof credenciais === "function" ? credenciais() : credenciais);
+  const ler = (): UnboxCredentials => (typeof credentials === "function" ? credentials() : credentials);
 
   let cache: CachedToken | null = null;
   let inFlight: Promise<CachedToken> | null = null;

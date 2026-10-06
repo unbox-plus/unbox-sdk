@@ -1,6 +1,6 @@
 {
   "name": "@unbox-plus/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SDK oficial da API de parceiros da Unbox (headless commerce): catálogo, carrinho, checkout, pedido, área do cliente, assinaturas e webhooks",
   "author": {
     "name": "Unbox Development Team",

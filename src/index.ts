@@ -39,7 +39,7 @@ export {
 export {
   withLeanSelection, normalizeThumbnails, isSessionError,
   ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING,
-} from "./pedido.js";
+} from "./order.js";
 
 export {
   connectUnboxStore, credentialsFromEnv, hasUnboxCredentials, loadAllCatalogItems,
