@@ -117,7 +117,7 @@ connectUnboxStore(credentials, {
 
 ### `UnboxClient` — operações de loja
 
-- **Catálogo**: `getCatalog`, `getProductBySlug`, `getProductById`, `getTags`, `getSimpleInventory`
+- **Catálogo**: `getCatalog`, `getProductBySlug`, `getProductById`, `getProductsByIds`, `getSubscribableCatalog`, `getTags`, `getSimpleInventory`
 - **Loja**: `getShop`, `getPaymentMethods`, `listDiscountCodes`, `findDiscountIdByCode`
 - **Carrinho**: `createCart`, `addCartItems`, `updateItemQuantity`, `removeCartItems`, `getCart`,
   `setEmailOnCart`, `applyDiscount`, `removeDiscount`, `createCartByTemplate`

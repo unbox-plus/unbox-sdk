@@ -1,5 +1,34 @@
 ## Changelog
 
+### v0.3.0 — o catálogo passa a responder sobre assinatura
+
+**Nada quebrou.** Os exports de 0.2.0 continuam no lugar, com as mesmas assinaturas: atualizar é
+só o `npm install`. O que entrou são dois métodos novos de catálogo e os campos de preço de
+assinatura nos tipos — tudo aditivo. A única mudança de comportamento está no `getShop`, e é uma
+consulta que **deixou** de quebrar.
+
+- **`getProductsByIds(ids)` entrou.** Vários produtos por id numa chamada só, com a mesma seleção
+  do `getProductById` mais o que a tela de edição de assinatura precisa: preço avulso e de
+  assinatura, estoque e variantes. Deduplica os ids, devolve `[]` para lista vazia e **não garante
+  a ordem** — case o resultado por `productId`/`_id`, porque id desconhecido simplesmente não
+  volta e alinhar por índice desalinha a tela inteira.
+- **`getSubscribableCatalog()` entrou.** Catálogo inteiro filtrado por `recurrenceAllowed === true`,
+  cada produto já com `categories` — as tags resolvidas por nome, e não o `tagIds` cru que obrigava
+  quem chama a fazer o cruzamento. Pagina o `getCatalog` de 100 em 100 em paralelo com o `getTags`,
+  e tem o freio: **página sem produto novo encerra o laço**. A API ignora o `offset` em algumas
+  lojas e devolve `hasNextPage: true` para sempre; sem o freio, é laço infinito repetindo a mesma
+  página.
+- **`getShop` não derruba mais a consulta em loja com política de assinatura real.**
+  `recurringOrdersPolicy.keepOrderPricingPolicy` saiu da seleção: é non-null no schema, mas a API
+  manda `null`, e aí o GraphQL mata a resposta inteira com "Cannot return null for non-nullable
+  field" — não só o campo. Quem lia esse campo perde ele; quem chamava `getShop` numa dessas lojas
+  ganha a resposta de volta.
+- **`pricingOnRecurrence` nos tipos, em produto e em variante.** Junto com `isSoldOut` na variante.
+  São campos opcionais em `CatalogProduct` e `ProductVariant`, e só vêm preenchidos nas consultas
+  que os pedem — `getCatalog` continua com a mesma carga de antes.
+- **`SubscribableProduct` é novo.** É `CatalogProduct` mais `categories`, e sai pelo índice como o
+  resto dos tipos.
+
 ### v0.2.0 — o vocabulário interno do pacote fica em inglês
 
 **Nada mudou na API nem no comportamento.** Mesmos exports, mesmas assinaturas, mesmas consultas

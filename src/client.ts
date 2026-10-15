@@ -29,7 +29,7 @@
 
 import type {
   UnboxConfig, AddressInput, CartItemInput, CartResult,
-  PlaceOrderParams, FulfillmentOption, CatalogProduct, Connection,
+  PlaceOrderParams, FulfillmentOption, CatalogProduct, Connection, SubscribableProduct,
   PaymentLinkConstraints, PaymentLinkItemInput, DeviceInput, SimpleInventoryInfo,
 } from "./types.js";
 import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
@@ -304,6 +304,44 @@ export class UnboxClient {
     return d.catalogItems?.nodes?.[0] ?? null;
   }
 
+  /** Vários produtos por id numa chamada só (mesma consulta do `getProductById`), com o que a tela de
+   *  edição de assinatura precisa: preço avulso e de assinatura, estoque e variantes. Id desconhecido
+   *  simplesmente não volta; a ordem não é garantida — case por `productId`/`_id`. */
+  async getProductsByIds(ids: string[]): Promise<CatalogProduct[]> {
+    const unicos = [...new Set(ids.filter(Boolean))];
+    if (!unicos.length) return [];
+    const q = `query($ids:[String],$first:Int){
+      catalogItems(productIdsOrERPCodes:$ids,first:$first){
+        nodes{__typename ... on CatalogItemProduct{ product{
+          _id productId title slug imageUrls isSoldOut recurrenceAllowed
+          pricing{displayPrice price minPrice maxPrice}
+          pricingOnRecurrence{displayPrice price minPrice maxPrice}
+          variants{_id title isSoldOut pricing{price displayPrice} pricingOnRecurrence{price displayPrice}}
+        }}}}}`;
+    const d = await this.gql<{ catalogItems: any }>(q, { ids: unicos, first: unicos.length });
+    return (d.catalogItems?.nodes ?? []).map((n: any) => n?.product).filter(Boolean);
+  }
+
+  /** Catálogo inteiro filtrado por `recurrenceAllowed === true`, cada produto com `categories`
+   *  (as tags resolvidas por nome). Percorre todas as páginas do `getCatalog`. */
+  async getSubscribableCatalog(): Promise<SubscribableProduct[]> {
+    const PAGE = 100;
+    const [tags, produtos] = await Promise.all([this.getTags(), (async () => {
+      const acc = new Map<string, CatalogProduct>();
+      for (let offset = 0; ; offset += PAGE) {
+        const page = await this.getCatalog({ first: PAGE, offset });
+        const antes = acc.size;
+        for (const n of page.nodes) acc.set(n.product._id, n.product);
+        // sem produto novo = a API ignorou o offset; sem este freio o `hasNextPage` repetiria a página para sempre
+        if (!page.pageInfo?.hasNextPage || acc.size === antes) return [...acc.values()];
+      }
+    })()]);
+    const porId = new Map(tags.map((t: any) => [t._id, { _id: t._id, name: t.displayTitle || t.name, slug: t.slug }]));
+    return produtos
+      .filter((p) => p.recurrenceAllowed === true)
+      .map((p) => ({ ...p, categories: (p.tagIds ?? []).map((id) => porId.get(id)).filter(Boolean) as SubscribableProduct["categories"] }));
+  }
+
   // isTopLevel omitido = sem filtro (igual à vitrine padrão da Unbox). Forçar `true` esconde
   // categorias reais e visíveis marcadas isTopLevel:false no admin (ex.: "Acessórios") — 404
   // em /categoria/<slug> mesmo com o produto corretamente vinculado à categoria.
@@ -319,14 +357,16 @@ export class UnboxClient {
   // ----------------------------------------------------------------------- loja
   /** Dados da loja: promoções (shopSales), política de assinatura, settings, pagamentos.
    *  `shopBySlug` não recebe argumento — a loja vem do JWT, e o `slug` que chega aqui serve só
-   *  para quem chama continuar falando em termos de loja. */
+   *  para quem chama continuar falando em termos de loja.
+   *  ⚠️ `recurringOrdersPolicy.keepOrderPricingPolicy` fica FORA: é non-null no schema, mas a API manda
+   *  null em lojas reais e a consulta inteira cai ("Cannot return null for non-nullable field"). */
   async getShop(_slug?: string): Promise<any> {
     const q = `query{ shopBySlug{
       _id name slug acceptsBoleto acceptsCreditCard
       settings{maxInstallments allowAnonymousRecurringOrders allowLegalPersonSales showOutOfStockCatalogs}
       shopSales{_id code label description discountMethod enabled createdAt
         calculation{__typename ... on CalculationFreeItemByTier { tiers { cartSubtotalGTE catalogProductVariant { _id title } } }}}
-      recurringOrdersPolicy{_id enabled keepOrderPricingPolicy
+      recurringOrdersPolicy{_id enabled
         allowedFrequencies{_id title periodicity interval}
         pricingPolicy{type value}
         customerActions{canSkipCycle canPause canChangeFrequency canChangeAddress canAddProducts canRemoveProducts canChangeProductQuantity}}

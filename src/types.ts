@@ -27,7 +27,13 @@ export interface ProductVariant {
   _id: string;
   title: string;
   sku?: string | null;
-  pricing?: Array<{ price: number | null; displayPrice: string; compareAtPrice?: { displayAmount: string } | null }>;
+  pricing?: Array<{
+    price: number | null;
+    displayPrice: string;
+    compareAtPrice?: { displayAmount: string } | null;
+  }>;
+  pricingOnRecurrence?: Array<{ price: number | null; displayPrice: string }>;
+  isSoldOut?: boolean;
 }
 
 export interface CatalogProduct {
@@ -50,8 +56,23 @@ export interface CatalogProduct {
   tagIds?: string[];
   minOrderQuantity?: number | null;
   maxOrderQuantity?: number | null;
-  pricing?: Array<{ displayPrice: string; price: number | null; minPrice: number; maxPrice: number }>;
+  pricing?: Array<{
+    displayPrice: string;
+    price: number | null;
+    minPrice: number;
+    maxPrice: number;
+  }>;
+  pricingOnRecurrence?: Array<{
+    displayPrice: string;
+    price: number | null;
+    minPrice: number;
+    maxPrice: number;
+  }>;
   variants?: ProductVariant[];
+}
+
+export interface SubscribableProduct extends CatalogProduct {
+  categories: Array<{ _id: string; name: string; slug: string }>;
 }
 
 export interface Connection<T> {
@@ -69,8 +90,8 @@ export interface AddressInput {
   neighborhood: string;
   city: string;
   region: string;
-  phone: string;        // OBRIGATÓRIO (String!) — validado ao vivo
-  country?: string;     // default "BR" aplicado pelo SDK
+  phone: string; // OBRIGATÓRIO (String!) — validado ao vivo
+  country?: string; // default "BR" aplicado pelo SDK
   address2?: string;
   cityCode?: string;
   isCommercial?: boolean;
@@ -94,7 +115,12 @@ export interface CartItemInput {
 }
 
 export interface FulfillmentOption {
-  fulfillmentMethod: { _id: string; name: string; displayName?: string; daysToDeliver?: number };
+  fulfillmentMethod: {
+    _id: string;
+    name: string;
+    displayName?: string;
+    daysToDeliver?: number;
+  };
   price: Money;
   discountPrice?: { displayAmount?: string };
 }
@@ -104,8 +130,14 @@ export interface CartResult {
   cartToken: string;
   cart: any;
   incorrectPriceFailures?: any[];
-  minOrderQuantityFailures?: Array<{ minOrderQuantity: number; quantity: number }>;
-  maxOrderQuantityFailures?: Array<{ maxOrderQuantity: number; quantity: number }>;
+  minOrderQuantityFailures?: Array<{
+    minOrderQuantity: number;
+    quantity: number;
+  }>;
+  maxOrderQuantityFailures?: Array<{
+    maxOrderQuantity: number;
+    quantity: number;
+  }>;
 }
 
 export type PaymentType = "pix" | "credit" | "boleto";
@@ -149,10 +181,16 @@ export interface PlaceOrderParams {
   total: number;
   /** itens finais do carrinho — TODOS (inclusive brindes), com os flags `isRecurring` e
    *  `isDiscountedBonusItem` (use buildOrderItems). Omitir os flags/brindes → 502 (ver buildOrderItems). */
-  items: Array<{ productConfiguration: { productId: string; productVariantId: string }; price: number; quantity: number; addedAt?: string; thumbnail?: string; isRecurring?: boolean; isDiscountedBonusItem?: boolean }>;
-  payment:
-    | { type: "pix" }
-    | { type: "card"; card: CardData };
+  items: Array<{
+    productConfiguration: { productId: string; productVariantId: string };
+    price: number;
+    quantity: number;
+    addedAt?: string;
+    thumbnail?: string;
+    isRecurring?: boolean;
+    isDiscountedBonusItem?: boolean;
+  }>;
+  payment: { type: "pix" } | { type: "card"; card: CardData };
   /** assinatura: cria recurring order. */
   recurrence?: { recurringItemsFrequencyId: string };
   /** fingerprint antifraude — omitido, o client envia { type: "API" } como fallback. */
