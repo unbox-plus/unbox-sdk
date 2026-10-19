@@ -1,5 +1,26 @@
 ## Changelog
 
+### v0.4.0 — os dados de kit chegam ao SDK
+
+**Nada quebrou.** Os exports e as assinaturas de 0.3.0 continuam no lugar: atualizar é só o
+`npm install`. Tudo o que entrou é aditivo — um método novo, campos novos nas seleções e tipos
+novos. O `getCatalog` continua com a mesma carga de antes.
+
+- **`getProductKit(productId)` entrou.** Devolve o kit com a cota (`requiredPicksPerGroup`), a
+  descrição do grupo e os sabores possíveis (`kitComponents`). Id inexistente devolve `null`, não
+  lança.
+- **`getProductsByIds` passou a trazer `productType`, `requiredPicksPerGroup`,
+  `kitGroupDescription` e `relatedInfo`.** Em produto que não é kit os campos vêm vazios.
+  `getSubscribableCatalog` não mudou: ele pagina o `getCatalog`, que segue sem esses campos.
+- **O item da assinatura traz `productKitId` e `productKitItemsConfigurations`.** Entraram na
+  seleção de `subscription()`, `pause`, `skipNextCycle`, `cancel`, `updateItems` e `updateCard`;
+  valem `null` em item que não é kit.
+- **`updateItems` aceita os dois campos de kit por item.** Quem não os passa envia exatamente o
+  mesmo payload de antes.
+- **Tipos novos:** `ProductKit`, `ProductKitComponent`, `ProductKitComponentConfiguration`,
+  `ProductKitRelatedInfo`, `ProductKitItemInput` e `RecurringOrderItem`; `CatalogProduct` ganha
+  `requiredPicksPerGroup`, `kitGroupDescription` e `relatedInfo`, opcionais.
+
 ### v0.3.0 — o catálogo passa a responder sobre assinatura
 
 **Nada quebrou.** Os exports de 0.2.0 continuam no lugar, com as mesmas assinaturas: atualizar é
