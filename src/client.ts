@@ -30,9 +30,12 @@
 import type {
   UnboxConfig, AddressInput, CartItemInput, CartResult,
   PlaceOrderParams, FulfillmentOption, CatalogProduct, Connection, SubscribableProduct,
-  PaymentLinkConstraints, PaymentLinkItemInput, DeviceInput, SimpleInventoryInfo,
+  PaymentLinkConstraints, PaymentLinkItemInput, DeviceInput, SimpleInventoryInfo, ProductKit,
 } from "./types.js";
 import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
+
+// Campos de kit (só nas consultas de edição/PDP de kit; o `getCatalog` não os pede, para manter a carga).
+const KIT_FIELDS = "requiredPicksPerGroup kitGroupDescription relatedInfo{title highlightLabel showUnitPrice}";
 
 const DEFAULTS = {
   // API pública de PARCEIROS — gateway na frente do core. Uma api key por parceiro
@@ -314,12 +317,23 @@ export class UnboxClient {
       catalogItems(productIdsOrERPCodes:$ids,first:$first){
         nodes{__typename ... on CatalogItemProduct{ product{
           _id productId title slug imageUrls isSoldOut recurrenceAllowed
+          productType ${KIT_FIELDS}
           pricing{displayPrice price minPrice maxPrice}
           pricingOnRecurrence{displayPrice price minPrice maxPrice}
           variants{_id title isSoldOut pricing{price displayPrice} pricingOnRecurrence{price displayPrice}}
         }}}}}`;
     const d = await this.gql<{ catalogItems: any }>(q, { ids: unicos, first: unicos.length });
     return (d.catalogItems?.nodes ?? []).map((n: any) => n?.product).filter(Boolean);
+  }
+
+  /** Kit com os sabores possíveis (`kitComponents`). Id inexistente devolve `null`. */
+  async getProductKit(productId: string): Promise<ProductKit | null> {
+    const q = `query($id:ID!){ productKit(productId:$id){
+      _id title ${KIT_FIELDS}
+      kitComponents{ productTitle variantTitle productId productVariantId productErpCode variantErpCode label kitLabelImage price{amount displayAmount} }
+    }}`;
+    const d = await this.gql<{ productKit: ProductKit | null }>(q, { id: productId });
+    return d.productKit ?? null;
   }
 
   /** Catálogo inteiro filtrado por `recurrenceAllowed === true`, cada produto com `categories`
