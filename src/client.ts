@@ -25,7 +25,8 @@
 //
 // Peculiaridades do gateway (validadas ao vivo): args opcionais não aceitam null (montar query
 // só com args presentes); unions exigem __typename; Authorization aceita token puro E Bearer
-// (a doc pública diz só puro — na prática ambos passam).
+// (a doc pública diz só puro — na prática ambos passam). Quem precisa de um formato só, sem
+// medição nem memória, fixa com `authScheme` (ver gql()).
 
 import type {
   UnboxConfig, AddressInput, CartItemInput, CartResult,
@@ -88,6 +89,49 @@ export class UnboxError extends Error {
     this.name = "UnboxError";
     this.errors = errors;
   }
+
+  /** Código do erro para quem mapeia mensagem por código: `errors[0].extensions.code`, depois
+   *  `errors[0].errorType`; `"TIMEOUT"` no timeout; `HTTP_<status>` quando o gateway respondeu
+   *  HTTP de erro sem `errors[]`. Sem nenhum deles, `undefined`: aí quem chama lê a `message`. */
+  get code(): string | undefined {
+    if (this.message === UNBOX_TIMEOUT) return UNBOX_TIMEOUT;
+    const first = this.errors?.[0];
+    const code = first?.extensions?.code ?? first?.errorType;
+    return typeof code === "string" && code ? code : undefined;
+  }
+}
+
+/** Recusa por PERMISSÃO: a sessão é válida, mas a conta não pode fazer esta operação. Renovar o
+ *  token não resolve, e repetir não muda nada; quem chama precisa pedir a liberação.
+ *
+ *  Não confundir com `isSessionError` (order.ts), que casa "unauthorized" de forma ampla e por
+ *  isso casa esta recusa também. Decide só pela mensagem, que é a forma medida; o `code` dessa
+ *  recusa ainda não foi visto, e `/FORBIDDEN/` casaria o `FORBIDDEN_ERROR`, que é outra coisa. */
+export function isMissingPermissionError(e: unknown): boolean {
+  const msgs = e instanceof UnboxError
+    ? [e.message, ...(e.errors ?? []).map((x: any) => x?.message ?? "")].join(" ")
+    : e instanceof Error ? e.message : String(e ?? "");
+  return /missing required permissions/i.test(msgs);
+}
+
+/** HTTP de erro sem `errors[]` (403 da api key, HTML de 502 do gateway) e corpo que não é JSON.
+ *
+ *  O trecho do corpo vai SÓ na `message`. O `errors[0].message` fica curto (`HTTP 502`) porque é
+ *  ele que `isAuthExpired` (store.ts) lê para decidir se renova e REPETE a chamada: um HTML com
+ *  "token" ou "expired" no texto, chegando depois de o pedido ter sido criado, repetiria o
+ *  placeOrder. Curto, só o 401 casa, que é recusa de sessão de verdade. */
+function httpError(status: number, body: string, prefix = ""): UnboxError {
+  const trecho = body.replace(/\s+/g, " ").trim().slice(0, 200);
+  const base = `HTTP ${status}`;
+  return new UnboxError(`${prefix}${base}${trecho ? `: ${trecho}` : ""}`, [{ message: base, extensions: { code: `HTTP_${status}` } }]);
+}
+
+function parseJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -128,6 +172,7 @@ export class UnboxClient {
   shopId: string;
   language: string;
   timeoutMs: number;
+  authScheme: "raw" | "bearer" | undefined;
   token: string | null = null;
 
   constructor(cfg: UnboxConfig) {
@@ -136,6 +181,7 @@ export class UnboxClient {
     this.shopId = cfg.shopId ?? "";
     this.language = cfg.language ?? DEFAULTS.language;
     this.timeoutMs = cfg.timeoutMs ?? 15000;
+    this.authScheme = cfg.authScheme;
   }
 
   // -------------------------------------------------------------------- auth
@@ -146,19 +192,30 @@ export class UnboxClient {
    */
   async signIn(username: string, password: string): Promise<string> {
     const q = `mutation($i:SignInInput!){ signIn(input:$i){ access_token id_token } }`;
-    const res = await fetch(this.partnerGqlUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.partnerApiKey,
-      },
-      body: JSON.stringify({ query: q, variables: { i: { username, password } } }),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
-    const json = await res.json();
-    if (json.errors?.length) {
+    let res: Response;
+    let text: string;
+    try {
+      res = await fetch(this.partnerGqlUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.partnerApiKey,
+        },
+        body: JSON.stringify({ query: q, variables: { i: { username, password } } }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+      text = await res.text();
+    } catch (e: any) {
+      if (e?.name === "TimeoutError" || e?.name === "AbortError") throw new UnboxError(UNBOX_TIMEOUT, [{ message: UNBOX_TIMEOUT }]);
+      throw e;
+    }
+    const json = parseJson(text);
+    if (json?.errors?.length) {
       throw new UnboxError(`signIn: ${json.errors.map((e: any) => e.message).join(" | ")}`, json.errors);
     }
+    // Prefixo "signIn: " também aqui: é por ele que quem chama separa falha de login de falha da
+    // operação, já que dentro de withStoreClient o signIn acontece no mesmo fluxo da chamada.
+    if (!res.ok || json === undefined) throw httpError(res.status, text, "signIn: ");
     const token = json.data?.signIn?.access_token;
     if (!token) throw new UnboxError("signIn sem access_token");
     this.token = token;
@@ -185,6 +242,14 @@ export class UnboxClient {
    * a adquirente responde num cartão recusado: repetir um `placeOrder` por causa disso seria
    * criar o segundo pedido e cobrar duas vezes. Sem formato medido, uma consulta leve mede antes,
    * e só então a mutação vai, uma vez.
+   *
+   * FORMATO FIXO. Com `authScheme` no config, nada disso acontece: o header sai sempre no formato
+   * pedido, sem a consulta que mede, sem repetir no outro formato, e o formato memorizado do
+   * processo não é lido nem gravado. É para quem não pode fazer chamada extra (uma conta sem
+   * acesso ao `shopBySlug`) nem aceitar que o `Bearer` fique memorizado.
+   *
+   * HTTP DE ERRO SEM `errors[]` (403 da api key, HTML de 502) lança `UnboxError` com `code`
+   * `HTTP_<status>`, em vez de devolver `undefined` em silêncio (ver httpError).
    */
   async gql<T = any>(
     query: string,
@@ -194,10 +259,11 @@ export class UnboxClient {
     const token = opts.token ?? this.token;
     if (!token) throw new UnboxError("sem token da loja: chame signIn() ou setToken()");
     const isMutation = /^\s*mutation\b/.test(query);
-    if (isMutation && !acceptedScheme) {
+    const fixed = this.authScheme;
+    if (isMutation && !fixed && !acceptedScheme) {
       await this.gql(`query{ shopBySlug{ _id } }`, {}, { token }).catch(() => null);
     }
-    const attempt = async (scheme: "bearer" | "raw"): Promise<{ json: any }> => {
+    const attempt = async (scheme: "bearer" | "raw"): Promise<{ json: any; httpFailure?: UnboxError }> => {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "x-api-key": this.partnerApiKey,
@@ -219,22 +285,34 @@ export class UnboxClient {
         if (e?.name === "TimeoutError" || e?.name === "AbortError") throw new UnboxError(UNBOX_TIMEOUT, [{ message: UNBOX_TIMEOUT }]);
         throw e;
       }
-      const json = await res.json().catch(() => ({ errors: [{ message: `resposta que não é JSON (HTTP ${res.status})` }] }));
+      const text = await res.text().catch(() => "");
+      const json = parseJson(text);
+      if (json?.errors?.length) return { json };
+      if (!res.ok || json === undefined) {
+        // Vira `errors[]` para seguir o mesmo caminho dos erros do GraphQL (inclusive a medição
+        // do formato, que já repetia com "HTTP 401" no texto); a mensagem longa sai no throw.
+        const httpFailure = httpError(res.status, text);
+        return { json: { errors: httpFailure.errors }, httpFailure };
+      }
       return { json };
     };
-    const primeiro = acceptedScheme ?? "raw";
-    let { json } = await attempt(primeiro);
-    if (!json.errors?.length) {
+    const primeiro = fixed ?? acceptedScheme ?? "raw";
+    let result = await attempt(primeiro);
+    if (fixed) {
+      // Formato fixo: uma tentativa, e o formato memorizado do processo fica intocado.
+    } else if (!result.json.errors?.length) {
       acceptedScheme = primeiro;
-    } else if (!acceptedScheme && !isMutation && isAuthSchemeError(json.errors)) {
+    } else if (!acceptedScheme && !isMutation && isAuthSchemeError(result.json.errors)) {
       const outro = primeiro === "raw" ? "bearer" : "raw";
       const segunda = await attempt(outro);
       if (!segunda.json.errors?.length) {
         acceptedScheme = outro;
         console.warn(`[unbox] o gateway aceitou o Authorization no formato "${outro}", e ele fica memorizado`);
-        json = segunda.json;
+        result = segunda;
       }
     }
+    const { json, httpFailure } = result;
+    if (httpFailure) throw httpFailure;
     if (json.errors?.length) {
       throw new UnboxError(json.errors.map((e: any) => e.message).join(" | "), json.errors);
     }

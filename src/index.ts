@@ -18,6 +18,7 @@ export {
   UnboxError,
   UNBOX_TIMEOUT,
   isUnboxTimeout,
+  isMissingPermissionError,
   PLACE_ORDER_TIMEOUT_MS,
   FULFILLMENT_GROUP_DATA,
   withFulfillmentGroupAddress,
