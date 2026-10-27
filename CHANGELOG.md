@@ -1,5 +1,37 @@
 ## Changelog
 
+### v0.5.0 — a página de kit chega ao SDK
+
+**Nada quebrou.** Os exports e as assinaturas de 0.4.0 continuam no lugar: atualizar é só o
+`npm install`. Item comum no carrinho envia exatamente o mesmo payload de antes; o que entrou é
+aditivo. Os métodos novos do kit foram validados ao vivo contra uma loja com kits.
+
+- **`getProductBySlug` traz o que a PDP de kit precisa:** `erpCode`, `requiredPicksPerGroup`,
+  `kitGroupDescription`, `relatedInfo` e o `group` com os `linkedProducts` (as outras opções do
+  bundle, cada uma com `slug`, `label`, preço e cota). Em produto que não é kit, `group` e os campos
+  de kit vêm vazios.
+- **O carrinho aceita kit.** `CartItemInput` virou `CartProductItemInput | CartKitItemInput`; o kit
+  entra como `{ kit: { productKitId, picks }, price, quantity }` e vai à API **sem**
+  `productConfiguration`. O `price` é o do kit, não a soma dos sabores. `createCart`,
+  `addCartItems`, `getCart` e `selectShipping` passam a devolver `kitItemConfigurations` em cada item
+  (`null` fora de kit).
+- **O `placeOrder` não perde o kit.** `buildOrderItems` devolve o item de kit como
+  `productKitConfiguration`, sem `productConfiguration` (que vem `null` no kit). Esse caminho não foi
+  exercitado com um pedido real: confira num pedido de teste antes de ir ao ar.
+- **O pedido mostra os sabores.** `getOrder` e `order()` do cliente trazem `kitItemConfigurations` nos
+  itens, na seleção completa (a enxuta, de reserva, continua sem ele).
+- **Kit novo em `kit.ts`:** `groupKitsByTitle` (bundle = kits de mesmo título),
+  `kitOptions(product)` (vinculados mais o kit atual, do mais barato ao mais caro),
+  `fetchKitTemplate(publishedUrl)` (lê `kitDisplay` e `relatedKits` do template publicado; qualquer
+  falha devolve `null`) e `kitPicksProblem(picks, cota)` (mensagem em português para a escolha
+  incompleta ou passada da cota).
+- **Cota errada na API volta como `MISSING_ITEMS_ERROR`**, que o `friendlyError` traduz como "produtos
+  não estão mais disponíveis". Valide antes com `kitPicksProblem`.
+- **Tipos novos:** `LinkedProduct`, `ProductKitGroup`, `KitDisplaySettings`, `RelatedKitsSettings`,
+  `KitTemplateSettings`, `CartProductItemInput` e `CartKitItemInput`; `PlaceOrderParams.items` aceita
+  `productKitConfiguration` e `productConfiguration` nulo. Constante nova: `KIT_ITEM`.
+- **`npm run check`** roda a verificação offline do kit (`tools/check-kit.mjs`).
+
 ### v0.4.0 — os dados de kit chegam ao SDK
 
 **Nada quebrou.** Os exports e as assinaturas de 0.3.0 continuam no lugar: atualizar é só o
