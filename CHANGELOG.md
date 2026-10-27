@@ -1,11 +1,25 @@
 ## Changelog
 
-### v0.5.0 — a página de kit chega ao SDK
+### v0.4.0 — os dados de kit chegam ao SDK
 
-**Nada quebrou.** Os exports e as assinaturas de 0.4.0 continuam no lugar: atualizar é só o
-`npm install`. Item comum no carrinho envia exatamente o mesmo payload de antes; o que entrou é
-aditivo. Os métodos novos do kit foram validados ao vivo contra uma loja com kits.
+**Nada quebrou.** Os exports e as assinaturas de 0.3.0 continuam no lugar: atualizar é só o
+`npm install`. Tudo o que entrou é aditivo — métodos novos, campos novos nas seleções e tipos
+novos. O `getCatalog` continua com a mesma carga de antes.
 
+- **`getProductKit(productId)` entrou.** Devolve o kit com a cota (`requiredPicksPerGroup`), a
+  descrição do grupo e os sabores possíveis (`kitComponents`). Id inexistente devolve `null`, não
+  lança.
+- **`getProductsByIds` passou a trazer `productType`, `requiredPicksPerGroup`,
+  `kitGroupDescription` e `relatedInfo`.** Em produto que não é kit os campos vêm vazios.
+  `getSubscribableCatalog` não mudou: ele pagina o `getCatalog`, que segue sem esses campos.
+- **O item da assinatura traz `productKitId` e `productKitItemsConfigurations`.** Entraram na
+  seleção de `subscription()`, `pause`, `skipNextCycle`, `cancel`, `updateItems` e `updateCard`;
+  valem `null` em item que não é kit.
+- **`updateItems` aceita os dois campos de kit por item.** Quem não os passa envia exatamente o
+  mesmo payload de antes.
+- **Tipos novos:** `ProductKit`, `ProductKitComponent`, `ProductKitComponentConfiguration`,
+  `ProductKitRelatedInfo`, `ProductKitItemInput` e `RecurringOrderItem`; `CatalogProduct` ganha
+  `requiredPicksPerGroup`, `kitGroupDescription` e `relatedInfo`, opcionais.
 - **`getProductBySlug` traz o que a PDP de kit precisa:** `erpCode`, `requiredPicksPerGroup`,
   `kitGroupDescription`, `relatedInfo` e o `group` com os `linkedProducts` (as outras opções do
   bundle, cada uma com `slug`, `label`, preço e cota). Em produto que não é kit, `group` e os campos
@@ -30,28 +44,6 @@ aditivo. Os métodos novos do kit foram validados ao vivo contra uma loja com ki
 - **Tipos novos:** `LinkedProduct`, `ProductKitGroup`, `KitDisplaySettings`, `RelatedKitsSettings`,
   `KitTemplateSettings`, `CartProductItemInput` e `CartKitItemInput`; `PlaceOrderParams.items` aceita
   `productKitConfiguration` e `productConfiguration` nulo. Constante nova: `KIT_ITEM`.
-- **`npm run check`** roda a verificação offline do kit (`tools/check-kit.mjs`).
-
-### v0.4.0 — os dados de kit chegam ao SDK
-
-**Nada quebrou.** Os exports e as assinaturas de 0.3.0 continuam no lugar: atualizar é só o
-`npm install`. Tudo o que entrou é aditivo — um método novo, campos novos nas seleções e tipos
-novos. O `getCatalog` continua com a mesma carga de antes.
-
-- **`getProductKit(productId)` entrou.** Devolve o kit com a cota (`requiredPicksPerGroup`), a
-  descrição do grupo e os sabores possíveis (`kitComponents`). Id inexistente devolve `null`, não
-  lança.
-- **`getProductsByIds` passou a trazer `productType`, `requiredPicksPerGroup`,
-  `kitGroupDescription` e `relatedInfo`.** Em produto que não é kit os campos vêm vazios.
-  `getSubscribableCatalog` não mudou: ele pagina o `getCatalog`, que segue sem esses campos.
-- **O item da assinatura traz `productKitId` e `productKitItemsConfigurations`.** Entraram na
-  seleção de `subscription()`, `pause`, `skipNextCycle`, `cancel`, `updateItems` e `updateCard`;
-  valem `null` em item que não é kit.
-- **`updateItems` aceita os dois campos de kit por item.** Quem não os passa envia exatamente o
-  mesmo payload de antes.
-- **Tipos novos:** `ProductKit`, `ProductKitComponent`, `ProductKitComponentConfiguration`,
-  `ProductKitRelatedInfo`, `ProductKitItemInput` e `RecurringOrderItem`; `CatalogProduct` ganha
-  `requiredPicksPerGroup`, `kitGroupDescription` e `relatedInfo`, opcionais.
 
 ### v0.3.0 — o catálogo passa a responder sobre assinatura
 
