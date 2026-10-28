@@ -163,7 +163,9 @@ Página de kit (PDP) e carrinho:
 
 - `getProductBySlug` devolve `group.linkedProducts` (as outras opções do bundle). `kitOptions(produto)`
   monta o seletor (vinculados + o atual, do mais barato ao mais caro); trocar de opção é navegar para o
-  `slug` dela. `groupKitsByTitle` reúne kits de mesmo título numa listagem.
+  `slug` dela. `groupKitsByTitle` reúne kits de mesmo título numa listagem. Cada opção traz o preço
+  (`catalog.pricing[0]`, com `minCompareAtPrice` para o "de"), o preço por unidade
+  (`catalog.pricingPerUnit[0]` com `catalog.unitPriceLabel`) e a descrição (`catalog.kitGroupDescription`).
 - Os sabores vêm de `getProductKit(id).kitComponents`. Confira a escolha com `kitPicksProblem(picks, cota)`
   antes de enviar: a API recusa cota errada com `MISSING_ITEMS_ERROR`, sem dizer o motivo.
 - No carrinho o kit vai sem `productId`/`productVariantId`, e o `price` é o do kit:

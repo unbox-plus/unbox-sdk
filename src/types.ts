@@ -61,7 +61,17 @@ export interface CatalogProduct {
     price: number | null;
     minPrice: number;
     maxPrice: number;
+    /** o preço "de" (riscado). Só `getProductBySlug` (e as opções do bundle) o pedem. */
+    minCompareAtPrice?: Money | null;
   }>;
+  /** Preço por unidade ("R$ 14,00 / dose"), com `unitPriceLabel`. Só `getProductBySlug`. */
+  pricingPerUnit?: Array<{
+    displayPrice: string;
+    price: number | null;
+    minPrice: number;
+    minCompareAtPrice?: Money | null;
+  }> | null;
+  unitPriceLabel?: string | null;
   pricingOnRecurrence?: Array<{
     displayPrice: string;
     price: number | null;

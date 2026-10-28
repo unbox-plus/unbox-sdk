@@ -24,6 +24,13 @@ novos. O `getCatalog` continua com a mesma carga de antes.
   `kitGroupDescription`, `relatedInfo` e o `group` com os `linkedProducts` (as outras opções do
   bundle, cada uma com `slug`, `label`, preço e cota). Em produto que não é kit, `group` e os campos
   de kit vêm vazios.
+- **E o que a PDP precisa para mostrar cada opção do bundle.** `getProductBySlug` também devolve, no
+  produto e em cada `linkedProducts[].catalog`: `pricing[].minCompareAtPrice` (o preço "de",
+  riscado), `pricingPerUnit` com `unitPriceLabel` ("R$ 14,00 / dose") e, nas opções,
+  `kitGroupDescription` (a descrição de cada uma: sem ela todas herdavam a do grupo). O `kitOptions`
+  repassa tudo isso, inclusive para o kit atual, e **deixa de fora a opção oculta no painel** (ela segue
+  vinculada ao grupo, mas a página dela dá 404). Em produto que não é kit os campos novos vêm `null`.
+  O `getCatalog` segue sem eles.
 - **O carrinho aceita kit.** `CartItemInput` virou `CartProductItemInput | CartKitItemInput`; o kit
   entra como `{ kit: { productKitId, picks }, price, quantity }` e vai à API **sem**
   `productConfiguration`. O `price` é o do kit, não a soma dos sabores. `createCart`,

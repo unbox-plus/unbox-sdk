@@ -21,9 +21,9 @@ export function groupKitsByTitle<T extends { title?: string | null }>(items: T[]
   return [...groups.values()];
 }
 
-/** As opções do bundle para o seletor da PDP: os kits vinculados MAIS o kit atual (que o grupo não
- *  inclui), do mais barato ao mais caro. Sem grupo, só o próprio kit. */
-export function kitOptions(product: Pick<CatalogProduct, "productId" | "title" | "slug" | "imageUrls" | "erpCode" | "group" | "pricing" | "requiredPicksPerGroup" | "isSoldOut" | "relatedInfo">): LinkedProduct[] {
+/** As opções do bundle para o seletor da PDP: os kits vinculados e visíveis MAIS o kit atual (que o
+ *  grupo não inclui), do mais barato ao mais caro. Sem grupo, só o próprio kit. */
+export function kitOptions(product: Pick<CatalogProduct, "productId" | "title" | "slug" | "imageUrls" | "erpCode" | "group" | "pricing" | "pricingPerUnit" | "unitPriceLabel" | "requiredPicksPerGroup" | "kitGroupDescription" | "isSoldOut" | "relatedInfo">): LinkedProduct[] {
   const current: LinkedProduct = {
     productId: product.productId,
     erpCode: product.erpCode,
@@ -32,12 +32,15 @@ export function kitOptions(product: Pick<CatalogProduct, "productId" | "title" |
     slug: product.slug,
     imageUrls: product.imageUrls,
     catalog: {
-      pricing: product.pricing, requiredPicksPerGroup: product.requiredPicksPerGroup,
+      pricing: product.pricing, pricingPerUnit: product.pricingPerUnit, unitPriceLabel: product.unitPriceLabel,
+      requiredPicksPerGroup: product.requiredPicksPerGroup, kitGroupDescription: product.kitGroupDescription,
       isSoldOut: product.isSoldOut, relatedInfo: product.relatedInfo,
     },
   };
   const price = (o: LinkedProduct) => o.catalog?.pricing?.[0]?.minPrice ?? 0;
-  return [...(product.group?.linkedProducts ?? []), current].sort((a, b) => price(a) - price(b));
+  // opção oculta no painel continua vinculada ao grupo, mas a página dela responde 404
+  const linked = (product.group?.linkedProducts ?? []).filter((o) => o.catalog?.isVisible !== false);
+  return [...linked, current].sort((a, b) => price(a) - price(b));
 }
 
 /**

@@ -36,6 +36,9 @@ import { withLeanSelection, normalizeThumbnails, KIT_ITEM, ITEM_IMAGES, DETAILED
 
 // Campos de kit (só nas consultas de edição/PDP de kit; o `getCatalog` não os pede, para manter a carga).
 const KIT_FIELDS = "requiredPicksPerGroup kitGroupDescription relatedInfo{title highlightLabel showUnitPrice}";
+// Preço na PDP: o "de" (riscado) e o preço por unidade ("dose", "caixa") que o `kitDisplay` manda exibir.
+const PDP_PRICING = "displayPrice price minPrice maxPrice minCompareAtPrice{amount displayAmount}";
+const PDP_PRICING_PER_UNIT = "pricingPerUnit{displayPrice price minPrice minCompareAtPrice{amount displayAmount}}";
 
 /** Item do carrinho no formato de ENTRADA (`CartItemInput` da API). Kit vai sem `productConfiguration`. */
 function cartItemPayload(it: CartItemInput) {
@@ -297,9 +300,10 @@ export class UnboxClient {
 
   private static PDP_PRODUCT_FIELDS = `_id productId title pageTitle slug description additionalInformation productType
           sku isVisible isSoldOut isBackorder isLowQuantity recurrenceAllowed erpCode
-          ${KIT_FIELDS} group{label titleLabel highlightLabel shortDescription linkedProducts{productId erpCode title label titleLabel highlightLabel shortDescription slug imageUrls catalog{_id isSoldOut requiredPicksPerGroup relatedInfo{title highlightLabel showUnitPrice} pricing{displayPrice price minPrice maxPrice}}}}
+          ${KIT_FIELDS} group{label titleLabel highlightLabel shortDescription linkedProducts{productId erpCode title label titleLabel highlightLabel shortDescription slug imageUrls catalog{_id isVisible isSoldOut requiredPicksPerGroup kitGroupDescription unitPriceLabel relatedInfo{title highlightLabel showUnitPrice} pricing{${PDP_PRICING}} ${PDP_PRICING_PER_UNIT}}}}
           minOrderQuantity maxOrderQuantity imageUrls videoUrls tagIds metaDescription
-          pricing{displayPrice price minPrice maxPrice}
+          unitPriceLabel ${PDP_PRICING_PER_UNIT}
+          pricing{${PDP_PRICING}}
           variants{_id title sku pricing{price displayPrice compareAtPrice{displayAmount}}}`;
 
   async getProductBySlug(productSlug: string): Promise<any> {
