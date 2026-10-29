@@ -2,10 +2,11 @@
 
 ### v0.4.0 — erro com código, formato de auth fixo e renovação na mensagem do gateway
 
-**Duas mudanças de comportamento**, as duas no caminho de erro, e o resto é aditivo. A loja
-atualiza com o `npm install`, sem tocar em arquivo, mas vale ler os dois primeiros itens: um
-`gql()` que antes devolvia `undefined` agora lança, e uma recusa que antes não renovava o token
-agora renova. Quem motivou a versão é a CLI (`unbox`), que fala com a mesma API de parceiros de
+**Três mudanças de comportamento**, as três no caminho de erro, e o resto é aditivo. A loja
+atualiza com o `npm install`, sem tocar em arquivo, mas vale ler os três primeiros itens: um
+`gql()` que antes devolvia `undefined` agora lança, uma recusa que antes não renovava o token
+agora renova, e várias que renovavam e repetiam a chamada, inclusive o `placeOrder`, deixaram
+de renovar. Quem motivou a versão é a CLI (`unbox`), que fala com a mesma API de parceiros de
 um terminal, com saída para agentes, e precisa de erro com código e de um formato de
 `Authorization` só.
 
@@ -22,7 +23,17 @@ um terminal, com saída para agentes, e precisa de erro com código e de um form
   já acontecia quando o corpo não era JSON.
 - **`withStoreClient` renova em `Unauthorized - No authenticated user`.** É a forma que o gateway
   de parceiros usa para token vencido, e ela não casava a regra de renovação: o token vencido
-  derrubava a chamada em vez de renovar. O termo foi **acrescentado**; nenhum dos antigos saiu.
+  derrubava a chamada em vez de renovar.
+- **`withStoreClient` só renova e repete em erro de sessão inequívoco.** A regra casava `TOKEN`,
+  `EXPIRED` e `401` em qualquer ponto da mensagem, e por isso casava também erros da operação:
+  `DISCOUNT_EXPIRED_ERROR` (cupom vencido), erro de token de cartão da adquirente. Como o checkout
+  das lojas chama o `placeOrder` dentro do `withStoreClient`, uma recusa dessas depois da captura
+  renovava o token e mandava o `placeOrder` de novo, que é o segundo pedido e a segunda cobrança.
+  Agora renova só em três formas: `Unauthorized - No authenticated user`, `UNAUTHENTICATED` (na
+  mensagem ou no `code`) e `HTTP_401`. Saíram `TOKEN`, `EXPIRED`, `401` solto e `ACCESS_DENIED`,
+  e um `Error` que não é `UnboxError` nunca renova. O vencimento normal não muda, porque o cache
+  já renova o token antes de ele vencer. O que muda é uma recusa de sessão fora dessas três formas,
+  que agora falha uma vez em vez de renovar.
 - **`UnboxError.code` entrou.** `errors[0].extensions.code`, senão `errors[0].errorType`;
   `"TIMEOUT"` no timeout; `HTTP_<status>` no erro de transporte; `undefined` sem nenhum deles. Quem
   mapeia mensagem por código deixa de comparar texto.
