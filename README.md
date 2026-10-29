@@ -91,7 +91,7 @@ shopId**. As duas exceções são campos que o próprio schema declara: o `shopI
 
 | Método | Para |
 |---|---|
-| `withStoreClient(fn)` | roda `fn` com o client de loja e repete **uma vez**, com token novo, se o token tinha vencido |
+| `withStoreClient(fn)` | roda `fn` com o client de loja e repete **uma vez**, com token novo, se o token tinha vencido (inclusive a recusa `Unauthorized - No authenticated user` do gateway) |
 | `getStoreClient()` | o client cru, já autenticado |
 | `getShopContext()` | `{ shopId, shopSlug }` resolvidos (credencial explícita ganha; senão sai do claim do token) |
 | `getCustomerClient(token)` | client da área do cliente; `null` se o token estiver ausente ou vencido |
@@ -115,9 +115,20 @@ connectUnboxStore(credentials, {
 });
 ```
 
+**`authScheme`.** Sem ele, o client mede o formato do `Authorization` que o gateway aceita (token
+puro ou `Bearer`) e memoriza para o processo: antes da primeira mutação faz uma consulta leve
+(`shopBySlug`), e uma consulta recusada por auth é repetida no outro formato. Com
+`authScheme: "raw"` (ou `"bearer"`), o header sai sempre naquele formato, sem a consulta extra, sem
+repetição e sem tocar no formato memorizado. É o que serve a uma ferramenta de linha de comando
+com conta restrita, que não pode depender do `shopBySlug` nem aceitar `Bearer`:
+
+```ts
+connectUnboxStore({ ...credentialsFromEnv(env), authScheme: "raw" });
+```
+
 ### `UnboxClient` — operações de loja
 
-- **Catálogo**: `getCatalog`, `getProductBySlug`, `getProductById`, `getProductsByIds`, `getSubscribableCatalog`, `getTags`, `getSimpleInventory`
+- **Catálogo**: `getCatalog`, `getProductBySlug`, `getProductById`, `getProductsByIds`, `getProductKit`, `getSubscribableCatalog`, `getTags`, `getSimpleInventory`
 - **Loja**: `getShop`, `getPaymentMethods`, `listDiscountCodes`, `findDiscountIdByCode`
 - **Carrinho**: `createCart`, `addCartItems`, `updateItemQuantity`, `removeCartItems`, `getCart`,
   `setEmailOnCart`, `applyDiscount`, `removeDiscount`, `createCartByTemplate`
@@ -139,6 +150,49 @@ loja não há contexto de loja, sem o do cliente não há conta.
 `pause`, `skipNextCycle`, `cancel`, `updateItems`, `updateCard`, `updateAddress`,
 `addressBooks`, `upsertAddress`, `deleteAddresses`, `purchasedProducts`.
 
+#### Kits
+
+Kit é o produto em que o cliente escolhe sabores até completar uma cota.
+
+- `getProductsByIds` devolve `productType` (`"KIT"` para kits), `requiredPicksPerGroup` (a cota),
+  `kitGroupDescription` e `relatedInfo { title highlightLabel showUnitPrice }`. O `getCatalog` não
+  pede esses campos.
+- `getProductKit(productId)` devolve o `ProductKit` com `kitComponents` (os sabores possíveis:
+  `productId`, `productVariantId`, `label`, `price`...), ou `null` se o id não existe.
+- O item da assinatura (`subscription()`) traz `productKitId` e `productKitItemsConfigurations`
+  (`null` fora de kit). Para editar, passe os dois em `updateItems`:
+
+```ts
+await customer.updateItems(recurringOrderId, [{
+  productId, variantId, quantity: 1,
+  productKitId,
+  productKitItemsConfigurations: [{ productId: a, productVariantId: va, quantity: 2 }],
+}]);
+```
+
+Página de kit (PDP) e carrinho:
+
+- `getProductBySlug` devolve `group.linkedProducts` (as outras opções do bundle). `kitOptions(produto)`
+  monta o seletor (vinculados + o atual, do mais barato ao mais caro); trocar de opção é navegar para o
+  `slug` dela. `groupKitsByTitle` reúne kits de mesmo título numa listagem. Cada opção traz o preço
+  (`catalog.pricing[0]`, com `minCompareAtPrice` para o "de"), o preço por unidade
+  (`catalog.pricingPerUnit[0]` com `catalog.unitPriceLabel`) e a descrição (`catalog.kitGroupDescription`).
+- Os sabores vêm de `getProductKit(id).kitComponents`. Confira a escolha com `kitPicksProblem(picks, cota)`
+  antes de enviar: a API recusa cota errada com `MISSING_ITEMS_ERROR`, sem dizer o motivo.
+- No carrinho o kit vai sem `productId`/`productVariantId`, e o `price` é o do kit:
+
+```ts
+await client.createCart([{
+  kit: { productKitId, picks: [{ productId: a, productVariantId: va, quantity: 2 }] },
+  price: kitPrice, quantity: 1,
+}]);
+```
+
+  Os itens do carrinho e do pedido trazem `kitItemConfigurations` (`null` fora de kit).
+  `buildOrderItems` já repassa o kit ao `placeOrder`.
+- `fetchKitTemplate(product.publishedUrl)` lê `kitDisplay` e `relatedKits` do template publicado (`null`
+  se falhar). Use o `publishedUrl` só para ler, nunca como canonical.
+
 ### Feedback ao cliente final (PT-BR)
 
 - `friendlyError(err)` — o código do erro (`DISCOUNT_EXPIRED_ERROR`, o corpo OAuth do login por
@@ -150,6 +204,29 @@ loja não há contexto de loja, sem o do cliente não há conta.
   `fulfillmentTypeLabel`, `trackingStatusLabel`, `subscriptionStatusLabel` — status cru
   (`"SHIPPING · new"`) não é texto para cliente. Cada um devolve o valor original quando ainda
   não conhece o status: novidade da API aparece crua, mas aparece.
+
+### Erros para quem integra
+
+Toda falha da API sai como `UnboxError`, com `message` e `errors[]` (o que o GraphQL devolveu).
+
+- **`err.code`** — `errors[0].extensions.code`, senão `errors[0].errorType`; `"TIMEOUT"` no
+  timeout; `HTTP_<status>` quando o gateway respondeu HTTP de erro sem `errors[]`. Sem nenhum
+  deles, `undefined`, e aí o que resta é a `message`.
+- **HTTP de erro sem `errors[]`** (403 `{"message":"Forbidden"}` de api key errada, HTML de 502)
+  lança `UnboxError` com `code` `HTTP_<status>` e `message` `HTTP <status>: <início do corpo>`.
+  Até a 0.3.0, o `gql()` devolvia `undefined` em silêncio nesse caso. O `errors[0].message` fica só
+  `HTTP <status>`, sem o corpo, para um texto qualquer na página de erro não ser lido como token
+  vencido e repetir a chamada.
+- **Erro do `signIn`** começa sempre com `signIn: ` (`signIn: Incorrect username or password.`,
+  `signIn: HTTP 502: ...`): é assim que se separa falha de login de falha da operação. Timeout do
+  `signIn` é `UNBOX_TIMEOUT`, como no resto.
+- **`isMissingPermissionError(err)`** — a sessão é válida, mas a conta não pode fazer aquela
+  operação (`Unauthorized - Missing required permissions`). Renovar o token não resolve; é pedir a
+  liberação. **Não confundir com `isSessionError`**, que casa "unauthorized" de forma ampla e casa
+  esta recusa também: use `isSessionError` para decidir "mandar para o login" na área do cliente, e
+  `isMissingPermissionError` para separar permissão de sessão.
+- **`isUnboxTimeout(err)`** — sem resposta no prazo. Em leitura, tente de novo; em `placeOrder`,
+  **não**: o pedido pode ter nascido.
 
 ### Webhooks
 
@@ -203,6 +280,8 @@ Estão escritas no código, ao lado de cada chamada. As que mais custaram:
   `placeOrder` como "tente de novo" — é a cobrança dupla.
 - **Mutação nunca repete por erro de auth.** "not authorized" também é o que a adquirente
   responde num cartão recusado.
+- **`Authorization` aceita token puro e `Bearer`.** A doc pública diz só puro. Sem `authScheme`,
+  o client mede e memoriza; com ele, o formato é fixo.
 - **Produto oculto no painel não entra em vitrine.** `catalogItems` não filtra visibilidade; o
   filtro está no ponto por onde todo catálogo passa, e desconta o `totalCount`.
 - **O preço final vem sempre do catálogo.** O servidor sobrescreve o preço enviado, e
@@ -231,6 +310,7 @@ Lojas geradas pelo CLI até a v0.24 têm a cópia dentro de `lib/unbox/`. Para p
 npm install
 npm run build       # tsc → dist/ (ESM + .d.ts)
 npm run typecheck
+node tools/check-errors.mjs   # auth e erros contra o dist/, com fetch falso (depois do build)
 ```
 
 Para testar contra uma loja antes de publicar, aponte o `package.json` dela para o caminho local:

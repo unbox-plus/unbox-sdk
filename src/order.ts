@@ -39,6 +39,10 @@ export async function withLeanSelection<T>(rotulo: string, rica: () => Promise<T
   }
 }
 
+/** Sabores escolhidos num item de KIT (carrinho e pedido). Vem `null` em item comum. Em item de kit o
+ *  `productConfiguration` é `null`: quem identifica o item é o `productKitId`. */
+export const KIT_ITEM = "kitItemConfigurations{productKitId productKitItemsConfigurations{productId productVariantId quantity variantTitle isSoldOut}}";
+
 /** Imagem do item do pedido. `OrderItem` guarda `imageURLs: ImageSizes` (um objeto de tamanhos),
  *  que é o que a conta hospedada da Unbox seleciona. A loja lê `thumbnail`: a normalização abaixo
  *  mantém esse contrato. */

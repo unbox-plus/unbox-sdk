@@ -21,6 +21,11 @@ export interface UnboxConfig {
   language?: string;
   /** Timeout por request (ms). Default: 15000. Aplica a signin e a toda chamada GraphQL. */
   timeoutMs?: number;
+  /** Formato FIXO do Authorization: `"raw"` (token puro, o que a doc oficial manda) ou
+   *  `"bearer"`. Definido, o header sai sempre nesse formato: sem a consulta que mede o formato
+   *  antes da primeira mutação, sem repetir no outro formato e sem ler nem gravar o formato
+   *  memorizado do processo. Vazio: o comportamento de sempre, que mede e memoriza (ver gql()). */
+  authScheme?: "raw" | "bearer";
 }
 
 export interface ProductVariant {
@@ -61,7 +66,17 @@ export interface CatalogProduct {
     price: number | null;
     minPrice: number;
     maxPrice: number;
+    /** o preço "de" (riscado). Só `getProductBySlug` (e as opções do bundle) o pedem. */
+    minCompareAtPrice?: Money | null;
   }>;
+  /** Preço por unidade ("R$ 14,00 / dose"), com `unitPriceLabel`. Só `getProductBySlug`. */
+  pricingPerUnit?: Array<{
+    displayPrice: string;
+    price: number | null;
+    minPrice: number;
+    minCompareAtPrice?: Money | null;
+  }> | null;
+  unitPriceLabel?: string | null;
   pricingOnRecurrence?: Array<{
     displayPrice: string;
     price: number | null;
@@ -69,6 +84,118 @@ export interface CatalogProduct {
     maxPrice: number;
   }>;
   variants?: ProductVariant[];
+  erpCode?: string | null;
+  group?: ProductKitGroup | null;
+  requiredPicksPerGroup?: number | null;
+  kitGroupDescription?: string | null;
+  relatedInfo?: ProductKitRelatedInfo | null;
+}
+
+/** Opção de um bundle: outro produto de kit do mesmo grupo (ex.: "2 Box", "4 Box"). Cada opção é uma
+ *  página própria, então trocar de opção é navegar para o `slug`. */
+export interface LinkedProduct {
+  productId: string;
+  erpCode?: string | null;
+  title: string;
+  label?: string | null;
+  titleLabel?: string | null;
+  highlightLabel?: string | null;
+  shortDescription?: string | null;
+  slug: string;
+  imageUrls?: string[] | null;
+  catalog?: Partial<CatalogProduct> | null;
+}
+
+/** `CatalogProduct.group`: os outros kits do bundle (não inclui o próprio produto). */
+export interface ProductKitGroup {
+  label?: string | null;
+  titleLabel?: string | null;
+  highlightLabel?: string | null;
+  shortDescription?: string | null;
+  linkedProducts?: LinkedProduct[] | null;
+}
+
+/** Como a loja exibe os kits na página de kit (`settings.kitDisplay` do template publicado). */
+export interface KitDisplaySettings {
+  showCompareAtPrice?: boolean | null;
+  showCompareAtPricePerUnit?: boolean | null;
+  showPrice?: boolean | null;
+  showPricePerUnit?: boolean | null;
+}
+
+/** Seção de kits relacionados (`settings.relatedKits` do template publicado). */
+export interface RelatedKitsSettings {
+  title?: string | null;
+  showThumbnail?: boolean | null;
+  enabled?: boolean | null;
+  relatedKitsIds?: Array<string | null> | null;
+}
+
+export interface KitTemplateSettings {
+  kitDisplay: KitDisplaySettings | null;
+  relatedKits: RelatedKitsSettings | null;
+}
+
+export interface ProductKitRelatedInfo {
+  title?: string | null;
+  highlightLabel?: string | null;
+  showUnitPrice?: boolean | null;
+}
+
+/** Um sabor possível do kit (`kitComponents` de `getProductKit`). */
+export interface ProductKitComponent {
+  productTitle?: string | null;
+  variantTitle?: string | null;
+  productId: string;
+  productVariantId: string;
+  productErpCode?: string | null;
+  variantErpCode?: string | null;
+  label?: string | null;
+  kitLabelImage?: string | null;
+  price?: Money | null;
+}
+
+export interface ProductKit {
+  _id: string;
+  title?: string | null;
+  requiredPicksPerGroup?: number | null;
+  kitGroupDescription?: string | null;
+  relatedInfo?: ProductKitRelatedInfo | null;
+  kitComponents?: ProductKitComponent[] | null;
+}
+
+/** Sabor escolhido num item de assinatura (leitura: `productKitItemsConfigurations`). */
+export interface ProductKitComponentConfiguration {
+  productId: string;
+  productVariantId: string;
+  quantity: number;
+  variantTitle?: string | null;
+  isSoldOut?: boolean | null;
+  isLowQuantity?: boolean | null;
+  isBackorder?: boolean | null;
+  inventoryAvailableToSell?: number | null;
+  productErpCode?: string | null;
+  variantErpCode?: string | null;
+}
+
+/** Sabor escolhido, no formato de ENTRADA de `updateItems` (`RecurringOrderItemInput`). */
+export interface ProductKitItemInput {
+  productId: string;
+  productVariantId: string;
+  quantity: number;
+}
+
+/** Item da assinatura como `subscription()` devolve (campos de `RECURRING_FIELDS`). */
+export interface RecurringOrderItem {
+  productId: string;
+  variantId: string;
+  productERPCode?: string | null;
+  variantERPCode?: string | null;
+  quantity: number;
+  skipNextCycle?: boolean;
+  /** Preenchidos só em item de kit; `null` nos demais. */
+  productKitId?: string | null;
+  productKitItemsConfigurations?: ProductKitComponentConfiguration[] | null;
 }
 
 export interface SubscribableProduct extends CatalogProduct {
@@ -98,21 +225,30 @@ export interface AddressInput {
   trackByMobile?: boolean;
 }
 
-export interface CartItemInput {
-  productId: string;
-  /** ⚠️ É `productVariantId`, NÃO `variantId`. Errar o nome (em payload montado à mão, fora
-   *  deste tipo) devolve um erro de GraphQL que só cita `productConfiguration`, sem dizer
-   *  qual campo faltou — armadilha clássica ao escrever testes contra a API. */
-  productVariantId: string;
-  /** Preço da variante. ⚠️ O servidor SOBRESCREVE com o preço do catálogo (validado ao vivo:
-   *  enviar 0.01 grava o preço real e `incorrectPriceFailures` vem vazio). Envie o preço real
-   *  por correção/UX, mas a fonte da verdade é o catálogo. */
+interface CartItemBase {
   price: number;
   quantity: number;
   isRecurring?: boolean;
   thumbnail?: string;
   currencyCode?: string;
 }
+
+/** Item comum do carrinho. */
+export interface CartProductItemInput extends CartItemBase {
+  productId: string;
+  productVariantId: string;
+  kit?: undefined;
+}
+
+/** Item de KIT: vai SEM `productConfiguration`, só com o kit e os sabores escolhidos. A soma das
+ *  quantidades tem de bater com `requiredPicksPerGroup` do kit. */
+export interface CartKitItemInput extends CartItemBase {
+  kit: { productKitId: string; picks: ProductKitItemInput[] };
+  productId?: undefined;
+  productVariantId?: undefined;
+}
+
+export type CartItemInput = CartProductItemInput | CartKitItemInput;
 
 export interface FulfillmentOption {
   fulfillmentMethod: {
@@ -182,7 +318,14 @@ export interface PlaceOrderParams {
   /** itens finais do carrinho — TODOS (inclusive brindes), com os flags `isRecurring` e
    *  `isDiscountedBonusItem` (use buildOrderItems). Omitir os flags/brindes → 502 (ver buildOrderItems). */
   items: Array<{
-    productConfiguration: { productId: string; productVariantId: string };
+    productConfiguration?: {
+      productId: string;
+      productVariantId: string;
+    } | null;
+    productKitConfiguration?: {
+      productKitId: string;
+      productKitItemsConfigurations: ProductKitItemInput[];
+    };
     price: number;
     quantity: number;
     addedAt?: string;

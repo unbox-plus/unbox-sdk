@@ -1,5 +1,95 @@
 ## Changelog
 
+### v0.4.0 — os dados de kit chegam ao SDK
+
+**Nada quebrou.** Os exports e as assinaturas de 0.3.0 continuam no lugar: atualizar é só o
+`npm install`. Tudo o que entrou é aditivo — métodos novos, campos novos nas seleções e tipos
+novos. O `getCatalog` continua com a mesma carga de antes.
+
+- **`getProductKit(productId)` entrou.** Devolve o kit com a cota (`requiredPicksPerGroup`), a
+  descrição do grupo e os sabores possíveis (`kitComponents`). Id inexistente devolve `null`, não
+  lança.
+- **`getProductsByIds` passou a trazer `productType`, `requiredPicksPerGroup`,
+  `kitGroupDescription` e `relatedInfo`.** Em produto que não é kit os campos vêm vazios.
+  `getSubscribableCatalog` não mudou: ele pagina o `getCatalog`, que segue sem esses campos.
+- **O item da assinatura traz `productKitId` e `productKitItemsConfigurations`.** Entraram na
+  seleção de `subscription()`, `pause`, `skipNextCycle`, `cancel`, `updateItems` e `updateCard`;
+  valem `null` em item que não é kit.
+- **`updateItems` aceita os dois campos de kit por item.** Quem não os passa envia exatamente o
+  mesmo payload de antes.
+- **Tipos novos:** `ProductKit`, `ProductKitComponent`, `ProductKitComponentConfiguration`,
+  `ProductKitRelatedInfo`, `ProductKitItemInput` e `RecurringOrderItem`; `CatalogProduct` ganha
+  `requiredPicksPerGroup`, `kitGroupDescription` e `relatedInfo`, opcionais.
+- **`getProductBySlug` traz o que a PDP de kit precisa:** `erpCode`, `requiredPicksPerGroup`,
+  `kitGroupDescription`, `relatedInfo` e o `group` com os `linkedProducts` (as outras opções do
+  bundle, cada uma com `slug`, `label`, preço e cota). Em produto que não é kit, `group` e os campos
+  de kit vêm vazios.
+- **E o que a PDP precisa para mostrar cada opção do bundle.** `getProductBySlug` também devolve, no
+  produto e em cada `linkedProducts[].catalog`: `pricing[].minCompareAtPrice` (o preço "de",
+  riscado), `pricingPerUnit` com `unitPriceLabel` ("R$ 14,00 / dose") e, nas opções,
+  `kitGroupDescription` (a descrição de cada uma: sem ela todas herdavam a do grupo). O `kitOptions`
+  repassa tudo isso, inclusive para o kit atual, e **deixa de fora a opção oculta no painel** (ela segue
+  vinculada ao grupo, mas a página dela dá 404). Em produto que não é kit os campos novos vêm `null`.
+  O `getCatalog` segue sem eles.
+- **O carrinho aceita kit.** `CartItemInput` virou `CartProductItemInput | CartKitItemInput`; o kit
+  entra como `{ kit: { productKitId, picks }, price, quantity }` e vai à API **sem**
+  `productConfiguration`. O `price` é o do kit, não a soma dos sabores. `createCart`,
+  `addCartItems`, `getCart` e `selectShipping` passam a devolver `kitItemConfigurations` em cada item
+  (`null` fora de kit).
+- **O `placeOrder` não perde o kit.** `buildOrderItems` devolve o item de kit como
+  `productKitConfiguration`, sem `productConfiguration` (que vem `null` no kit). Esse caminho não foi
+  exercitado com um pedido real: confira num pedido de teste antes de ir ao ar.
+- **O pedido mostra os sabores.** `getOrder` e `order()` do cliente trazem `kitItemConfigurations` nos
+  itens, na seleção completa (a enxuta, de reserva, continua sem ele).
+- **Kit novo em `kit.ts`:** `groupKitsByTitle` (bundle = kits de mesmo título),
+  `kitOptions(product)` (vinculados mais o kit atual, do mais barato ao mais caro),
+  `fetchKitTemplate(publishedUrl)` (lê `kitDisplay` e `relatedKits` do template publicado; qualquer
+  falha devolve `null`) e `kitPicksProblem(picks, cota)` (mensagem em português para a escolha
+  incompleta ou passada da cota).
+- **Cota errada na API volta como `MISSING_ITEMS_ERROR`**, que o `friendlyError` traduz como "produtos
+  não estão mais disponíveis". Valide antes com `kitPicksProblem`.
+- **Tipos novos:** `LinkedProduct`, `ProductKitGroup`, `KitDisplaySettings`, `RelatedKitsSettings`,
+  `KitTemplateSettings`, `CartProductItemInput` e `CartKitItemInput`; `PlaceOrderParams.items` aceita
+  `productKitConfiguration` e `productConfiguration` nulo. Constante nova: `KIT_ITEM`.
+
+### v0.4.0 — erro com código, formato de auth fixo e renovação na mensagem do gateway
+
+**Duas mudanças de comportamento**, as duas no caminho de erro, e o resto é aditivo. A loja
+atualiza com o `npm install`, sem tocar em arquivo, mas vale ler os dois primeiros itens: um
+`gql()` que antes devolvia `undefined` agora lança, e uma recusa que antes não renovava o token
+agora renova. Quem motivou a versão é a CLI (`unbox`), que fala com a mesma API de parceiros de
+um terminal, com saída para agentes, e precisa de erro com código e de um formato de
+`Authorization` só.
+
+- **HTTP de erro sem `errors[]` agora lança `UnboxError`, no `gql()` e no `signIn()`.** Um 403
+  `{"message":"Forbidden"}` (api key errada) fazia o `gql()` devolver `json.data`, que é
+  `undefined`, e o erro aparecia longe dali, como "cannot read property of undefined". No
+  `signIn()`, HTML de 502 lançava `SyntaxError` e 4xx sem `errors[]` virava "signIn sem
+  access*token". Agora os dois lançam `UnboxError` com `code` `HTTP*<status>`e`message`
+`HTTP <status>: <início do corpo>`; o do `signIn`mantém o prefixo`signIn: `, e o timeout do
+`signIn`sai como`UNBOX_TIMEOUT`, igual ao `gql()`. O `errors[0].message`fica só`HTTP <status>`, **sem o corpo**: é ele que o `withStoreClient`lê para decidir se renova e
+repete a chamada, e um HTML de 504 com "token" no texto, chegando depois de o pedido ter sido
+criado, repetiria o`placeOrder`. Um 401 sem `errors[]` passa a renovar o token uma vez, como
+  já acontecia quando o corpo não era JSON.
+- **`withStoreClient` renova em `Unauthorized - No authenticated user`.** É a forma que o gateway
+  de parceiros usa para token vencido, e ela não casava a regra de renovação: o token vencido
+  derrubava a chamada em vez de renovar. O termo foi **acrescentado**; nenhum dos antigos saiu.
+- **`UnboxError.code` entrou.** `errors[0].extensions.code`, senão `errors[0].errorType`;
+  `"TIMEOUT"` no timeout; `HTTP_<status>` no erro de transporte; `undefined` sem nenhum deles. Quem
+  mapeia mensagem por código deixa de comparar texto.
+- **`isMissingPermissionError(err)` entrou.** Separa "a conta não tem permissão para esta
+  operação" (`Unauthorized - Missing required permissions`) de sessão vencida, que se resolve
+  renovando. O `isSessionError` casa as duas e continua igual; a diferença está no README.
+- **`authScheme: "raw" | "bearer"` entrou**, em `UnboxConfig` e em `UnboxCredentials`. Sem ele,
+  nada muda: o client mede o formato do `Authorization`, faz a consulta leve antes da primeira
+  mutação e memoriza o formato para o processo. Com ele, o header sai sempre naquele formato, sem
+  consulta extra, sem repetição e sem ler nem gravar o formato memorizado. Uma conta só de deploy
+  pode não ter acesso ao `shopBySlug` da consulta leve, e o `Bearer` memorizado contrariava a doc
+  oficial, que manda token puro.
+- **`tools/check-errors.mjs` entrou** (fora do pacote publicado). O pacote não tem suíte de
+  testes, e isto cobre o caminho de auth e de erro contra o `dist/` com um `fetch` falso que
+  registra os cabeçalhos de cada chamada.
+
 ### v0.3.0 — o catálogo passa a responder sobre assinatura
 
 **Nada quebrou.** Os exports de 0.2.0 continuam no lugar, com as mesmas assinaturas: atualizar é

@@ -37,6 +37,9 @@ export interface UnboxCredentials {
   timeoutMs?: number;
   /** idioma de respostas/rótulos. Default: "pt-BR". */
   language?: string;
+  /** Formato FIXO do Authorization (`"raw"` = token puro). Vazio: o client mede e memoriza o
+   *  formato, como sempre fez. Ver `UnboxConfig.authScheme`. */
+  authScheme?: "raw" | "bearer";
 }
 
 /** Onde guardar o token entre processos. Sem isso, o cache é o da instância (por lambda). */
@@ -128,6 +131,7 @@ export function connectUnboxStore(
       shopId: cfg.shopId,
       language: cfg.language,
       timeoutMs: cfg.timeoutMs,
+      authScheme: cfg.authScheme,
     });
     const token = await client.signIn(cfg.user, cfg.pass);
     const claims = shopClaimsFromToken(token);
@@ -173,6 +177,7 @@ export function connectUnboxStore(
       shopId: c.shopId,
       language: cfg.language,
       timeoutMs: cfg.timeoutMs,
+      authScheme: cfg.authScheme,
     });
     client.setToken(c.token);
     return client;
@@ -250,11 +255,12 @@ export async function loadAllCatalogItems(
   return all;
 }
 
-/** Recusa que é de TOKEN VENCIDO, e não da operação: só ela justifica repetir a chamada. */
+/** Recusa que é de TOKEN VENCIDO, e não da operação: só ela justifica repetir a chamada.
+ *  "Unauthorized - No authenticated user" é a forma que o gateway de parceiros usa. */
 function isAuthExpired(e: unknown): boolean {
   if (e instanceof UnboxError) {
     const msg = (e.errors?.[0]?.message ?? e.message ?? "").toUpperCase();
-    return /ACCESS_DENIED|UNAUTHENTICATED|TOKEN|EXPIRED|401/.test(msg);
+    return /ACCESS_DENIED|UNAUTHENTICATED|NO AUTHENTICATED USER|TOKEN|EXPIRED|401/.test(msg);
   }
   if (e instanceof Error) return /401|ACCESS_DENIED/i.test(e.message);
   return false;

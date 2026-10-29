@@ -18,6 +18,7 @@ export {
   UnboxError,
   UNBOX_TIMEOUT,
   isUnboxTimeout,
+  isMissingPermissionError,
   PLACE_ORDER_TIMEOUT_MS,
   FULFILLMENT_GROUP_DATA,
   withFulfillmentGroupAddress,
@@ -38,7 +39,7 @@ export {
 
 export {
   withLeanSelection, normalizeThumbnails, isSessionError,
-  ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING,
+  ITEM_IMAGES, KIT_ITEM, DETAILED_SUMMARY, SHIPPING_AND_TRACKING,
 } from "./order.js";
 
 export {
@@ -48,6 +49,8 @@ export {
 export type {
   UnboxStore, UnboxCredentials, UnboxTokenStore, CachedToken, ShopContext,
 } from "./store.js";
+
+export { groupKitsByTitle, kitBundleKey, kitOptions, fetchKitTemplate, kitPicksProblem } from "./kit.js";
 
 export {
   decodeJwtClaims, isJwtExpired, shopClaimsFromToken, SHOP_ID_CLAIM, SHOP_SLUG_CLAIM,

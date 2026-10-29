@@ -25,14 +25,36 @@
 //
 // Peculiaridades do gateway (validadas ao vivo): args opcionais não aceitam null (montar query
 // só com args presentes); unions exigem __typename; Authorization aceita token puro E Bearer
-// (a doc pública diz só puro — na prática ambos passam).
+// (a doc pública diz só puro — na prática ambos passam). Quem precisa de um formato só, sem
+// medição nem memória, fixa com `authScheme` (ver gql()).
 
 import type {
   UnboxConfig, AddressInput, CartItemInput, CartResult,
   PlaceOrderParams, FulfillmentOption, CatalogProduct, Connection, SubscribableProduct,
-  PaymentLinkConstraints, PaymentLinkItemInput, DeviceInput, SimpleInventoryInfo,
+  PaymentLinkConstraints, PaymentLinkItemInput, DeviceInput, SimpleInventoryInfo, ProductKit,
 } from "./types.js";
-import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
+import { withLeanSelection, normalizeThumbnails, KIT_ITEM, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
+
+// Campos de kit (só nas consultas de edição/PDP de kit; o `getCatalog` não os pede, para manter a carga).
+const KIT_FIELDS = "requiredPicksPerGroup kitGroupDescription relatedInfo{title highlightLabel showUnitPrice}";
+// Preço na PDP: o "de" (riscado) e o preço por unidade ("dose", "caixa") que o `kitDisplay` manda exibir.
+const PDP_PRICING = "displayPrice price minPrice maxPrice minCompareAtPrice{amount displayAmount}";
+const PDP_PRICING_PER_UNIT = "pricingPerUnit{displayPrice price minPrice minCompareAtPrice{amount displayAmount}}";
+
+/** Item do carrinho no formato de ENTRADA (`CartItemInput` da API). Kit vai sem `productConfiguration`. */
+function cartItemPayload(it: CartItemInput) {
+  const common = {
+    price: { amount: it.price, currencyCode: it.currencyCode ?? "BRL" },
+    quantity: it.quantity, isRecurring: it.isRecurring ?? false, thumbnail: it.thumbnail ?? "",
+  };
+  if (it.kit) {
+    return { ...common, productKitConfiguration: {
+      productKitId: it.kit.productKitId,
+      productKitItemsConfigurations: it.kit.picks.map((p) => ({ productId: p.productId, productVariantId: p.productVariantId, quantity: p.quantity })),
+    } };
+  }
+  return { ...common, productConfiguration: { productId: it.productId, productVariantId: it.productVariantId } };
+}
 
 const DEFAULTS = {
   // API pública de PARCEIROS — gateway na frente do core. Uma api key por parceiro
@@ -88,6 +110,49 @@ export class UnboxError extends Error {
     this.name = "UnboxError";
     this.errors = errors;
   }
+
+  /** Código do erro para quem mapeia mensagem por código: `errors[0].extensions.code`, depois
+   *  `errors[0].errorType`; `"TIMEOUT"` no timeout; `HTTP_<status>` quando o gateway respondeu
+   *  HTTP de erro sem `errors[]`. Sem nenhum deles, `undefined`: aí quem chama lê a `message`. */
+  get code(): string | undefined {
+    if (this.message === UNBOX_TIMEOUT) return UNBOX_TIMEOUT;
+    const first = this.errors?.[0];
+    const code = first?.extensions?.code ?? first?.errorType;
+    return typeof code === "string" && code ? code : undefined;
+  }
+}
+
+/** Recusa por PERMISSÃO: a sessão é válida, mas a conta não pode fazer esta operação. Renovar o
+ *  token não resolve, e repetir não muda nada; quem chama precisa pedir a liberação.
+ *
+ *  Não confundir com `isSessionError` (order.ts), que casa "unauthorized" de forma ampla e por
+ *  isso casa esta recusa também. Decide só pela mensagem, que é a forma medida; o `code` dessa
+ *  recusa ainda não foi visto, e `/FORBIDDEN/` casaria o `FORBIDDEN_ERROR`, que é outra coisa. */
+export function isMissingPermissionError(e: unknown): boolean {
+  const msgs = e instanceof UnboxError
+    ? [e.message, ...(e.errors ?? []).map((x: any) => x?.message ?? "")].join(" ")
+    : e instanceof Error ? e.message : String(e ?? "");
+  return /missing required permissions/i.test(msgs);
+}
+
+/** HTTP de erro sem `errors[]` (403 da api key, HTML de 502 do gateway) e corpo que não é JSON.
+ *
+ *  O trecho do corpo vai SÓ na `message`. O `errors[0].message` fica curto (`HTTP 502`) porque é
+ *  ele que `isAuthExpired` (store.ts) lê para decidir se renova e REPETE a chamada: um HTML com
+ *  "token" ou "expired" no texto, chegando depois de o pedido ter sido criado, repetiria o
+ *  placeOrder. Curto, só o 401 casa, que é recusa de sessão de verdade. */
+function httpError(status: number, body: string, prefix = ""): UnboxError {
+  const trecho = body.replace(/\s+/g, " ").trim().slice(0, 200);
+  const base = `HTTP ${status}`;
+  return new UnboxError(`${prefix}${base}${trecho ? `: ${trecho}` : ""}`, [{ message: base, extensions: { code: `HTTP_${status}` } }]);
+}
+
+function parseJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -128,6 +193,7 @@ export class UnboxClient {
   shopId: string;
   language: string;
   timeoutMs: number;
+  authScheme: "raw" | "bearer" | undefined;
   token: string | null = null;
 
   constructor(cfg: UnboxConfig) {
@@ -136,6 +202,7 @@ export class UnboxClient {
     this.shopId = cfg.shopId ?? "";
     this.language = cfg.language ?? DEFAULTS.language;
     this.timeoutMs = cfg.timeoutMs ?? 15000;
+    this.authScheme = cfg.authScheme;
   }
 
   // -------------------------------------------------------------------- auth
@@ -146,19 +213,30 @@ export class UnboxClient {
    */
   async signIn(username: string, password: string): Promise<string> {
     const q = `mutation($i:SignInInput!){ signIn(input:$i){ access_token id_token } }`;
-    const res = await fetch(this.partnerGqlUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.partnerApiKey,
-      },
-      body: JSON.stringify({ query: q, variables: { i: { username, password } } }),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
-    const json = await res.json();
-    if (json.errors?.length) {
+    let res: Response;
+    let text: string;
+    try {
+      res = await fetch(this.partnerGqlUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.partnerApiKey,
+        },
+        body: JSON.stringify({ query: q, variables: { i: { username, password } } }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+      text = await res.text();
+    } catch (e: any) {
+      if (e?.name === "TimeoutError" || e?.name === "AbortError") throw new UnboxError(UNBOX_TIMEOUT, [{ message: UNBOX_TIMEOUT }]);
+      throw e;
+    }
+    const json = parseJson(text);
+    if (json?.errors?.length) {
       throw new UnboxError(`signIn: ${json.errors.map((e: any) => e.message).join(" | ")}`, json.errors);
     }
+    // Prefixo "signIn: " também aqui: é por ele que quem chama separa falha de login de falha da
+    // operação, já que dentro de withStoreClient o signIn acontece no mesmo fluxo da chamada.
+    if (!res.ok || json === undefined) throw httpError(res.status, text, "signIn: ");
     const token = json.data?.signIn?.access_token;
     if (!token) throw new UnboxError("signIn sem access_token");
     this.token = token;
@@ -185,6 +263,14 @@ export class UnboxClient {
    * a adquirente responde num cartão recusado: repetir um `placeOrder` por causa disso seria
    * criar o segundo pedido e cobrar duas vezes. Sem formato medido, uma consulta leve mede antes,
    * e só então a mutação vai, uma vez.
+   *
+   * FORMATO FIXO. Com `authScheme` no config, nada disso acontece: o header sai sempre no formato
+   * pedido, sem a consulta que mede, sem repetir no outro formato, e o formato memorizado do
+   * processo não é lido nem gravado. É para quem não pode fazer chamada extra (uma conta sem
+   * acesso ao `shopBySlug`) nem aceitar que o `Bearer` fique memorizado.
+   *
+   * HTTP DE ERRO SEM `errors[]` (403 da api key, HTML de 502) lança `UnboxError` com `code`
+   * `HTTP_<status>`, em vez de devolver `undefined` em silêncio (ver httpError).
    */
   async gql<T = any>(
     query: string,
@@ -194,10 +280,11 @@ export class UnboxClient {
     const token = opts.token ?? this.token;
     if (!token) throw new UnboxError("sem token da loja: chame signIn() ou setToken()");
     const isMutation = /^\s*mutation\b/.test(query);
-    if (isMutation && !acceptedScheme) {
+    const fixed = this.authScheme;
+    if (isMutation && !fixed && !acceptedScheme) {
       await this.gql(`query{ shopBySlug{ _id } }`, {}, { token }).catch(() => null);
     }
-    const attempt = async (scheme: "bearer" | "raw"): Promise<{ json: any }> => {
+    const attempt = async (scheme: "bearer" | "raw"): Promise<{ json: any; httpFailure?: UnboxError }> => {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "x-api-key": this.partnerApiKey,
@@ -219,22 +306,34 @@ export class UnboxClient {
         if (e?.name === "TimeoutError" || e?.name === "AbortError") throw new UnboxError(UNBOX_TIMEOUT, [{ message: UNBOX_TIMEOUT }]);
         throw e;
       }
-      const json = await res.json().catch(() => ({ errors: [{ message: `resposta que não é JSON (HTTP ${res.status})` }] }));
+      const text = await res.text().catch(() => "");
+      const json = parseJson(text);
+      if (json?.errors?.length) return { json };
+      if (!res.ok || json === undefined) {
+        // Vira `errors[]` para seguir o mesmo caminho dos erros do GraphQL (inclusive a medição
+        // do formato, que já repetia com "HTTP 401" no texto); a mensagem longa sai no throw.
+        const httpFailure = httpError(res.status, text);
+        return { json: { errors: httpFailure.errors }, httpFailure };
+      }
       return { json };
     };
-    const primeiro = acceptedScheme ?? "raw";
-    let { json } = await attempt(primeiro);
-    if (!json.errors?.length) {
+    const primeiro = fixed ?? acceptedScheme ?? "raw";
+    let result = await attempt(primeiro);
+    if (fixed) {
+      // Formato fixo: uma tentativa, e o formato memorizado do processo fica intocado.
+    } else if (!result.json.errors?.length) {
       acceptedScheme = primeiro;
-    } else if (!acceptedScheme && !isMutation && isAuthSchemeError(json.errors)) {
+    } else if (!acceptedScheme && !isMutation && isAuthSchemeError(result.json.errors)) {
       const outro = primeiro === "raw" ? "bearer" : "raw";
       const segunda = await attempt(outro);
       if (!segunda.json.errors?.length) {
         acceptedScheme = outro;
         console.warn(`[unbox] o gateway aceitou o Authorization no formato "${outro}", e ele fica memorizado`);
-        json = segunda.json;
+        result = segunda;
       }
     }
+    const { json, httpFailure } = result;
+    if (httpFailure) throw httpFailure;
     if (json.errors?.length) {
       throw new UnboxError(json.errors.map((e: any) => e.message).join(" | "), json.errors);
     }
@@ -278,9 +377,11 @@ export class UnboxClient {
   }
 
   private static PDP_PRODUCT_FIELDS = `_id productId title pageTitle slug description additionalInformation productType
-          sku isVisible isSoldOut isBackorder isLowQuantity recurrenceAllowed
+          sku isVisible isSoldOut isBackorder isLowQuantity recurrenceAllowed erpCode
+          ${KIT_FIELDS} group{label titleLabel highlightLabel shortDescription linkedProducts{productId erpCode title label titleLabel highlightLabel shortDescription slug imageUrls catalog{_id isVisible isSoldOut requiredPicksPerGroup kitGroupDescription unitPriceLabel relatedInfo{title highlightLabel showUnitPrice} pricing{${PDP_PRICING}} ${PDP_PRICING_PER_UNIT}}}}
           minOrderQuantity maxOrderQuantity imageUrls videoUrls tagIds metaDescription
-          pricing{displayPrice price minPrice maxPrice}
+          unitPriceLabel ${PDP_PRICING_PER_UNIT}
+          pricing{${PDP_PRICING}}
           variants{_id title sku pricing{price displayPrice compareAtPrice{displayAmount}}}`;
 
   async getProductBySlug(productSlug: string): Promise<any> {
@@ -314,12 +415,23 @@ export class UnboxClient {
       catalogItems(productIdsOrERPCodes:$ids,first:$first){
         nodes{__typename ... on CatalogItemProduct{ product{
           _id productId title slug imageUrls isSoldOut recurrenceAllowed
+          productType ${KIT_FIELDS}
           pricing{displayPrice price minPrice maxPrice}
           pricingOnRecurrence{displayPrice price minPrice maxPrice}
           variants{_id title isSoldOut pricing{price displayPrice} pricingOnRecurrence{price displayPrice}}
         }}}}}`;
     const d = await this.gql<{ catalogItems: any }>(q, { ids: unicos, first: unicos.length });
     return (d.catalogItems?.nodes ?? []).map((n: any) => n?.product).filter(Boolean);
+  }
+
+  /** Kit com os sabores possíveis (`kitComponents`). Id inexistente devolve `null`. */
+  async getProductKit(productId: string): Promise<ProductKit | null> {
+    const q = `query($id:ID!){ productKit(productId:$id){
+      _id title ${KIT_FIELDS}
+      kitComponents{ productTitle variantTitle productId productVariantId productErpCode variantErpCode label kitLabelImage price{amount displayAmount} }
+    }}`;
+    const d = await this.gql<{ productKit: ProductKit | null }>(q, { id: productId });
+    return d.productKit ?? null;
   }
 
   /** Catálogo inteiro filtrado por `recurrenceAllowed === true`, cada produto com `categories`
@@ -399,19 +511,13 @@ export class UnboxClient {
     const q = `mutation($i:CreateCartInput!){ createCart(input:$i){
       token
       cart{ _id totalItemQuantity expiresAt
-        items{edges{node{_id productConfiguration{productId productVariantId} title variantTitle quantity thumbnail price{amount displayAmount} isRecurring isDiscountedBonusItem}}}
+        items{edges{node{_id productConfiguration{productId productVariantId} title variantTitle quantity thumbnail price{amount displayAmount} isRecurring isDiscountedBonusItem ${KIT_ITEM}}}}
         checkout{fulfillmentGroups{_id} summary{itemTotal{displayAmount} total{amount displayAmount}}}}
       incorrectPriceFailures{productConfiguration{productId} providedPrice{amount} currentPrice{amount}}
       minOrderQuantityFailures{minOrderQuantity quantity}
       maxOrderQuantityFailures{maxOrderQuantity quantity} }}`;
     const d = await this.gql<{ createCart: any }>(q, { i: {
-      items: items.map((it) => ({
-        price: { amount: it.price, currencyCode: it.currencyCode ?? "BRL" },
-        productConfiguration: { productId: it.productId, productVariantId: it.productVariantId },
-        quantity: it.quantity,
-        isRecurring: it.isRecurring ?? false,
-        thumbnail: it.thumbnail ?? "",
-      })),
+      items: items.map(cartItemPayload),
     } });
     const r = d.createCart;
     // Obs.: o servidor SOBRESCREVE o preço com o do catálogo; incorrectPriceFailures vem vazio na
@@ -428,16 +534,12 @@ export class UnboxClient {
   /** Adiciona itens a um carrinho existente (exige cartId + cartToken). isRecurring marca assinatura. */
   async addCartItems(cartId: string, cartToken: string, items: CartItemInput[]): Promise<any> {
     const q = `mutation($i:AddCartItemsInput!){ addCartItems(input:$i){
-      cart{ _id totalItemQuantity items{edges{node{_id productConfiguration{productId productVariantId} title variantTitle quantity price{amount displayAmount} isRecurring isDiscountedBonusItem}}} }
+      cart{ _id totalItemQuantity items{edges{node{_id productConfiguration{productId productVariantId} title variantTitle quantity price{amount displayAmount} isRecurring isDiscountedBonusItem ${KIT_ITEM}}}} }
       cartEvents{type data}
       minOrderQuantityFailures{minOrderQuantity quantity} maxOrderQuantityFailures{maxOrderQuantity quantity} }}`;
     const d = await this.gql<{ addCartItems: any }>(q, { i: {
       cartId, cartToken,
-      items: items.map((it) => ({
-        price: { amount: it.price, currencyCode: it.currencyCode ?? "BRL" },
-        productConfiguration: { productId: it.productId, productVariantId: it.productVariantId },
-        quantity: it.quantity, isRecurring: it.isRecurring ?? false, thumbnail: it.thumbnail ?? "",
-      })),
+      items: items.map(cartItemPayload),
     } });
     return d.addCartItems;
   }
@@ -467,7 +569,7 @@ export class UnboxClient {
       _id email expiresAt referenceId recurringItemsFrequencyId totalItemQuantity
       items(first:100){ totalCount edges{node{
         _id productConfiguration{productId productVariantId} title variantTitle quantity addedAt
-        thumbnail price{amount displayAmount} isRecurring isDiscountedBonusItem }}}
+        thumbnail price{amount displayAmount} isRecurring isDiscountedBonusItem ${KIT_ITEM} }}}
       checkout{
         fulfillmentGroups{_id selectedFulfillmentOption{fulfillmentMethod{_id displayName name} price{displayAmount}}
           data{shippingAddress{fullName taxPayerId phone address1 address2 number neighborhood city region postal}}}
@@ -546,7 +648,7 @@ export class UnboxClient {
   async selectShipping(cartId: string, cartToken: string, fulfillmentGroupId: string, fulfillmentMethodId: string): Promise<any> {
     const q = `mutation($i:SelectFulfillmentOptionForGroupInput!){ selectFulfillmentOptionForGroup(input:$i){
       cart{
-        items{edges{node{productConfiguration{productId productVariantId} title variantTitle price{amount} quantity addedAt thumbnail isDiscountedBonusItem}}}
+        items{edges{node{productConfiguration{productId productVariantId} title variantTitle price{amount} quantity addedAt thumbnail isDiscountedBonusItem ${KIT_ITEM}}}}
         checkout{summary{itemTotal{displayAmount} discountTotal{displayAmount} fulfillmentTotal{displayAmount} total{amount displayAmount}}}} }}`;
     const d = await this.gql<{ selectFulfillmentOptionForGroup: any }>(q, { i: { cartId, cartToken, fulfillmentGroupId, fulfillmentMethodId } });
     return d.selectFulfillmentOptionForGroup.cart;
@@ -564,7 +666,14 @@ export class UnboxClient {
       .map((n: any) => ({
         addedAt: n.addedAt,
         price: n.price.amount,
-        productConfiguration: n.productConfiguration,
+        // item de kit: `productConfiguration` vem null e o que identifica o item é o kit com os sabores
+        ...(n.kitItemConfigurations?.productKitId
+          ? { productKitConfiguration: {
+              productKitId: n.kitItemConfigurations.productKitId,
+              productKitItemsConfigurations: (n.kitItemConfigurations.productKitItemsConfigurations ?? []).map((k: any) => (
+                { productId: k.productId, productVariantId: k.productVariantId, quantity: k.quantity })),
+            } }
+          : { productConfiguration: n.productConfiguration }),
         quantity: n.quantity,
         thumbnail: n.thumbnail ?? "",
         // ESSENCIAIS p/ casar com o carrinho — sem eles a Unbox lança
@@ -668,7 +777,7 @@ export class UnboxClient {
             status type trackingCode
             ${rich ? SHIPPING_AND_TRACKING : ""}
             ${address}
-            items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}}}
+            items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}${rich ? ` ${KIT_ITEM}` : ""}}}
           }
           invoiceIssued dispatched delivered
           recurringOrderId } }`;

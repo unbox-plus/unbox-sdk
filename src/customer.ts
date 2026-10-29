@@ -13,15 +13,15 @@
 // schema declara explicitamente (uma conta pode assinar em mais de uma loja do mesmo parceiro).
 
 import { UnboxError, withFulfillmentGroupAddress, type UnboxClient } from "./client.js";
-import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
-import type { AddressInput } from "./types.js";
+import { withLeanSelection, normalizeThumbnails, KIT_ITEM, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
+import type { AddressInput, ProductKitItemInput } from "./types.js";
 
 const RECURRING_FIELDS = `
   _id referenceId shopId createdAt updatedAt customerAccountId unboxPayCustomerId
   status{value createdAt} frequency{_id title periodicity interval}
   pricingPolicy{type value}
   cyclesInformation{cycleCount skipNextCycle lastCycleDate nextCycleDate}
-  items{productId variantId productERPCode variantERPCode quantity skipNextCycle}
+  items{productId variantId productERPCode variantERPCode quantity skipNextCycle productKitId productKitItemsConfigurations{productId productVariantId quantity variantTitle isSoldOut}}
   unboxPayCustomerCreditCard{first4Digits last4Digits expirationMonth expirationYear holderName}
   shippingAddressBook{_id fullName postal address1 number neighborhood city region}
   discount{discountId code} totalAmount{amount displayAmount}`;
@@ -158,7 +158,7 @@ export class UnboxCustomerClient {
           status type trackingCode
           ${rica ? SHIPPING_AND_TRACKING : ""}
           ${endereco}
-          items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}}}
+          items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}${rica ? ` ${KIT_ITEM}` : ""}}}
         }
         recurringOrderId generatedNewRecurringOrder }}`;
     const vars = { referenceId };
@@ -211,7 +211,11 @@ export class UnboxCustomerClient {
     return this.gql(`mutation($id:String!){customerCancelRecurringOrder(recurringOrderId:$id){${RECURRING_FIELDS}}}`, { id: recurringOrderId });
   }
   /** Trocar itens/quantidade. */
-  updateItems(recurringOrderId: string, items: Array<{ productId: string; variantId: string; quantity: number; skipNextCycle?: boolean }>) {
+  updateItems(recurringOrderId: string, items: Array<{
+    productId: string; variantId: string; quantity: number; skipNextCycle?: boolean;
+    /** Item de KIT: id do kit e os sabores escolhidos. Omitidos (`undefined`), nem vão no payload. */
+    productKitId?: string | null; productKitItemsConfigurations?: ProductKitItemInput[];
+  }>) {
     const q = `mutation($i:UpdateRecurringOrderItemsInput){customerUpdateRecurringOrderItems(input:$i){${RECURRING_FIELDS}}}`;
     return this.gql(q, { i: { recurringOrderId, recurringOrderItems: items.map((x) => ({ ...x, skipNextCycle: x.skipNextCycle ?? false })) } });
   }
