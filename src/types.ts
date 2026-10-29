@@ -21,6 +21,11 @@ export interface UnboxConfig {
   language?: string;
   /** Timeout por request (ms). Default: 15000. Aplica a signin e a toda chamada GraphQL. */
   timeoutMs?: number;
+  /** Formato FIXO do Authorization: `"raw"` (token puro, o que a doc oficial manda) ou
+   *  `"bearer"`. Definido, o header sai sempre nesse formato: sem a consulta que mede o formato
+   *  antes da primeira mutação, sem repetir no outro formato e sem ler nem gravar o formato
+   *  memorizado do processo. Vazio: o comportamento de sempre, que mede e memoriza (ver gql()). */
+  authScheme?: "raw" | "bearer";
 }
 
 export interface ProductVariant {
