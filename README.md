@@ -117,7 +117,7 @@ connectUnboxStore(credentials, {
 
 ### `UnboxClient` — operações de loja
 
-- **Catálogo**: `getCatalog`, `getProductBySlug`, `getProductById`, `getProductsByIds`, `getSubscribableCatalog`, `getTags`, `getSimpleInventory`
+- **Catálogo**: `getCatalog`, `getProductBySlug`, `getProductById`, `getProductsByIds`, `getProductKit`, `getSubscribableCatalog`, `getTags`, `getSimpleInventory`
 - **Loja**: `getShop`, `getPaymentMethods`, `listDiscountCodes`, `findDiscountIdByCode`
 - **Carrinho**: `createCart`, `addCartItems`, `updateItemQuantity`, `removeCartItems`, `getCart`,
   `setEmailOnCart`, `applyDiscount`, `removeDiscount`, `createCartByTemplate`
@@ -138,6 +138,26 @@ loja não há contexto de loja, sem o do cliente não há conta.
 `me`, `updateAccount`, `orders`, `order`, `subscriptions`, `subscription`, `subscriptionCycles`,
 `pause`, `skipNextCycle`, `cancel`, `updateItems`, `updateCard`, `updateAddress`,
 `addressBooks`, `upsertAddress`, `deleteAddresses`, `purchasedProducts`.
+
+#### Kits
+
+Kit é o produto em que o cliente escolhe sabores até completar uma cota.
+
+- `getProductsByIds` devolve `productType` (`"KIT"` para kits), `requiredPicksPerGroup` (a cota),
+  `kitGroupDescription` e `relatedInfo { title highlightLabel showUnitPrice }`. O `getCatalog` não
+  pede esses campos.
+- `getProductKit(productId)` devolve o `ProductKit` com `kitComponents` (os sabores possíveis:
+  `productId`, `productVariantId`, `label`, `price`...), ou `null` se o id não existe.
+- O item da assinatura (`subscription()`) traz `productKitId` e `productKitItemsConfigurations`
+  (`null` fora de kit). Para editar, passe os dois em `updateItems`:
+
+```ts
+await customer.updateItems(recurringOrderId, [{
+  productId, variantId, quantity: 1,
+  productKitId,
+  productKitItemsConfigurations: [{ productId: a, productVariantId: va, quantity: 2 }],
+}]);
+```
 
 ### Feedback ao cliente final (PT-BR)
 

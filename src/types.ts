@@ -69,6 +69,72 @@ export interface CatalogProduct {
     maxPrice: number;
   }>;
   variants?: ProductVariant[];
+  /** Kit: a cota de sabores a escolher. Só vem em `getProductsByIds`/`getProductKit`. */
+  requiredPicksPerGroup?: number | null;
+  kitGroupDescription?: string | null;
+  relatedInfo?: ProductKitRelatedInfo | null;
+}
+
+export interface ProductKitRelatedInfo {
+  title?: string | null;
+  highlightLabel?: string | null;
+  showUnitPrice?: boolean | null;
+}
+
+/** Um sabor possível do kit (`kitComponents` de `getProductKit`). */
+export interface ProductKitComponent {
+  productTitle?: string | null;
+  variantTitle?: string | null;
+  productId: string;
+  productVariantId: string;
+  productErpCode?: string | null;
+  variantErpCode?: string | null;
+  label?: string | null;
+  kitLabelImage?: string | null;
+  price?: Money | null;
+}
+
+export interface ProductKit {
+  _id: string;
+  title?: string | null;
+  requiredPicksPerGroup?: number | null;
+  kitGroupDescription?: string | null;
+  relatedInfo?: ProductKitRelatedInfo | null;
+  kitComponents?: ProductKitComponent[] | null;
+}
+
+/** Sabor escolhido num item de assinatura (leitura: `productKitItemsConfigurations`). */
+export interface ProductKitComponentConfiguration {
+  productId: string;
+  productVariantId: string;
+  quantity: number;
+  variantTitle?: string | null;
+  isSoldOut?: boolean | null;
+  isLowQuantity?: boolean | null;
+  isBackorder?: boolean | null;
+  inventoryAvailableToSell?: number | null;
+  productErpCode?: string | null;
+  variantErpCode?: string | null;
+}
+
+/** Sabor escolhido, no formato de ENTRADA de `updateItems` (`RecurringOrderItemInput`). */
+export interface ProductKitItemInput {
+  productId: string;
+  productVariantId: string;
+  quantity: number;
+}
+
+/** Item da assinatura como `subscription()` devolve (campos de `RECURRING_FIELDS`). */
+export interface RecurringOrderItem {
+  productId: string;
+  variantId: string;
+  productERPCode?: string | null;
+  variantERPCode?: string | null;
+  quantity: number;
+  skipNextCycle?: boolean;
+  /** Preenchidos só em item de kit; `null` nos demais. */
+  productKitId?: string | null;
+  productKitItemsConfigurations?: ProductKitComponentConfiguration[] | null;
 }
 
 export interface SubscribableProduct extends CatalogProduct {
