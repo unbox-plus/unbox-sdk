@@ -32,10 +32,28 @@ import type {
   PlaceOrderParams, FulfillmentOption, CatalogProduct, Connection, SubscribableProduct,
   PaymentLinkConstraints, PaymentLinkItemInput, DeviceInput, SimpleInventoryInfo, ProductKit,
 } from "./types.js";
-import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
+import { withLeanSelection, normalizeThumbnails, KIT_ITEM, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
 
 // Campos de kit (só nas consultas de edição/PDP de kit; o `getCatalog` não os pede, para manter a carga).
 const KIT_FIELDS = "requiredPicksPerGroup kitGroupDescription relatedInfo{title highlightLabel showUnitPrice}";
+// Preço na PDP: o "de" (riscado) e o preço por unidade ("dose", "caixa") que o `kitDisplay` manda exibir.
+const PDP_PRICING = "displayPrice price minPrice maxPrice minCompareAtPrice{amount displayAmount}";
+const PDP_PRICING_PER_UNIT = "pricingPerUnit{displayPrice price minPrice minCompareAtPrice{amount displayAmount}}";
+
+/** Item do carrinho no formato de ENTRADA (`CartItemInput` da API). Kit vai sem `productConfiguration`. */
+function cartItemPayload(it: CartItemInput) {
+  const common = {
+    price: { amount: it.price, currencyCode: it.currencyCode ?? "BRL" },
+    quantity: it.quantity, isRecurring: it.isRecurring ?? false, thumbnail: it.thumbnail ?? "",
+  };
+  if (it.kit) {
+    return { ...common, productKitConfiguration: {
+      productKitId: it.kit.productKitId,
+      productKitItemsConfigurations: it.kit.picks.map((p) => ({ productId: p.productId, productVariantId: p.productVariantId, quantity: p.quantity })),
+    } };
+  }
+  return { ...common, productConfiguration: { productId: it.productId, productVariantId: it.productVariantId } };
+}
 
 const DEFAULTS = {
   // API pública de PARCEIROS — gateway na frente do core. Uma api key por parceiro
@@ -281,9 +299,11 @@ export class UnboxClient {
   }
 
   private static PDP_PRODUCT_FIELDS = `_id productId title pageTitle slug description additionalInformation productType
-          sku isVisible isSoldOut isBackorder isLowQuantity recurrenceAllowed
+          sku isVisible isSoldOut isBackorder isLowQuantity recurrenceAllowed erpCode
+          ${KIT_FIELDS} group{label titleLabel highlightLabel shortDescription linkedProducts{productId erpCode title label titleLabel highlightLabel shortDescription slug imageUrls catalog{_id isVisible isSoldOut requiredPicksPerGroup kitGroupDescription unitPriceLabel relatedInfo{title highlightLabel showUnitPrice} pricing{${PDP_PRICING}} ${PDP_PRICING_PER_UNIT}}}}
           minOrderQuantity maxOrderQuantity imageUrls videoUrls tagIds metaDescription
-          pricing{displayPrice price minPrice maxPrice}
+          unitPriceLabel ${PDP_PRICING_PER_UNIT}
+          pricing{${PDP_PRICING}}
           variants{_id title sku pricing{price displayPrice compareAtPrice{displayAmount}}}`;
 
   async getProductBySlug(productSlug: string): Promise<any> {
@@ -413,19 +433,13 @@ export class UnboxClient {
     const q = `mutation($i:CreateCartInput!){ createCart(input:$i){
       token
       cart{ _id totalItemQuantity expiresAt
-        items{edges{node{_id productConfiguration{productId productVariantId} title variantTitle quantity thumbnail price{amount displayAmount} isRecurring isDiscountedBonusItem}}}
+        items{edges{node{_id productConfiguration{productId productVariantId} title variantTitle quantity thumbnail price{amount displayAmount} isRecurring isDiscountedBonusItem ${KIT_ITEM}}}}
         checkout{fulfillmentGroups{_id} summary{itemTotal{displayAmount} total{amount displayAmount}}}}
       incorrectPriceFailures{productConfiguration{productId} providedPrice{amount} currentPrice{amount}}
       minOrderQuantityFailures{minOrderQuantity quantity}
       maxOrderQuantityFailures{maxOrderQuantity quantity} }}`;
     const d = await this.gql<{ createCart: any }>(q, { i: {
-      items: items.map((it) => ({
-        price: { amount: it.price, currencyCode: it.currencyCode ?? "BRL" },
-        productConfiguration: { productId: it.productId, productVariantId: it.productVariantId },
-        quantity: it.quantity,
-        isRecurring: it.isRecurring ?? false,
-        thumbnail: it.thumbnail ?? "",
-      })),
+      items: items.map(cartItemPayload),
     } });
     const r = d.createCart;
     // Obs.: o servidor SOBRESCREVE o preço com o do catálogo; incorrectPriceFailures vem vazio na
@@ -442,16 +456,12 @@ export class UnboxClient {
   /** Adiciona itens a um carrinho existente (exige cartId + cartToken). isRecurring marca assinatura. */
   async addCartItems(cartId: string, cartToken: string, items: CartItemInput[]): Promise<any> {
     const q = `mutation($i:AddCartItemsInput!){ addCartItems(input:$i){
-      cart{ _id totalItemQuantity items{edges{node{_id productConfiguration{productId productVariantId} title variantTitle quantity price{amount displayAmount} isRecurring isDiscountedBonusItem}}} }
+      cart{ _id totalItemQuantity items{edges{node{_id productConfiguration{productId productVariantId} title variantTitle quantity price{amount displayAmount} isRecurring isDiscountedBonusItem ${KIT_ITEM}}}} }
       cartEvents{type data}
       minOrderQuantityFailures{minOrderQuantity quantity} maxOrderQuantityFailures{maxOrderQuantity quantity} }}`;
     const d = await this.gql<{ addCartItems: any }>(q, { i: {
       cartId, cartToken,
-      items: items.map((it) => ({
-        price: { amount: it.price, currencyCode: it.currencyCode ?? "BRL" },
-        productConfiguration: { productId: it.productId, productVariantId: it.productVariantId },
-        quantity: it.quantity, isRecurring: it.isRecurring ?? false, thumbnail: it.thumbnail ?? "",
-      })),
+      items: items.map(cartItemPayload),
     } });
     return d.addCartItems;
   }
@@ -481,7 +491,7 @@ export class UnboxClient {
       _id email expiresAt referenceId recurringItemsFrequencyId totalItemQuantity
       items(first:100){ totalCount edges{node{
         _id productConfiguration{productId productVariantId} title variantTitle quantity addedAt
-        thumbnail price{amount displayAmount} isRecurring isDiscountedBonusItem }}}
+        thumbnail price{amount displayAmount} isRecurring isDiscountedBonusItem ${KIT_ITEM} }}}
       checkout{
         fulfillmentGroups{_id selectedFulfillmentOption{fulfillmentMethod{_id displayName name} price{displayAmount}}
           data{shippingAddress{fullName taxPayerId phone address1 address2 number neighborhood city region postal}}}
@@ -560,7 +570,7 @@ export class UnboxClient {
   async selectShipping(cartId: string, cartToken: string, fulfillmentGroupId: string, fulfillmentMethodId: string): Promise<any> {
     const q = `mutation($i:SelectFulfillmentOptionForGroupInput!){ selectFulfillmentOptionForGroup(input:$i){
       cart{
-        items{edges{node{productConfiguration{productId productVariantId} title variantTitle price{amount} quantity addedAt thumbnail isDiscountedBonusItem}}}
+        items{edges{node{productConfiguration{productId productVariantId} title variantTitle price{amount} quantity addedAt thumbnail isDiscountedBonusItem ${KIT_ITEM}}}}
         checkout{summary{itemTotal{displayAmount} discountTotal{displayAmount} fulfillmentTotal{displayAmount} total{amount displayAmount}}}} }}`;
     const d = await this.gql<{ selectFulfillmentOptionForGroup: any }>(q, { i: { cartId, cartToken, fulfillmentGroupId, fulfillmentMethodId } });
     return d.selectFulfillmentOptionForGroup.cart;
@@ -578,7 +588,14 @@ export class UnboxClient {
       .map((n: any) => ({
         addedAt: n.addedAt,
         price: n.price.amount,
-        productConfiguration: n.productConfiguration,
+        // item de kit: `productConfiguration` vem null e o que identifica o item é o kit com os sabores
+        ...(n.kitItemConfigurations?.productKitId
+          ? { productKitConfiguration: {
+              productKitId: n.kitItemConfigurations.productKitId,
+              productKitItemsConfigurations: (n.kitItemConfigurations.productKitItemsConfigurations ?? []).map((k: any) => (
+                { productId: k.productId, productVariantId: k.productVariantId, quantity: k.quantity })),
+            } }
+          : { productConfiguration: n.productConfiguration }),
         quantity: n.quantity,
         thumbnail: n.thumbnail ?? "",
         // ESSENCIAIS p/ casar com o carrinho — sem eles a Unbox lança
@@ -682,7 +699,7 @@ export class UnboxClient {
             status type trackingCode
             ${rich ? SHIPPING_AND_TRACKING : ""}
             ${address}
-            items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}}}
+            items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}${rich ? ` ${KIT_ITEM}` : ""}}}
           }
           invoiceIssued dispatched delivered
           recurringOrderId } }`;

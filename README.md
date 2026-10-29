@@ -159,6 +159,29 @@ await customer.updateItems(recurringOrderId, [{
 }]);
 ```
 
+Página de kit (PDP) e carrinho:
+
+- `getProductBySlug` devolve `group.linkedProducts` (as outras opções do bundle). `kitOptions(produto)`
+  monta o seletor (vinculados + o atual, do mais barato ao mais caro); trocar de opção é navegar para o
+  `slug` dela. `groupKitsByTitle` reúne kits de mesmo título numa listagem. Cada opção traz o preço
+  (`catalog.pricing[0]`, com `minCompareAtPrice` para o "de"), o preço por unidade
+  (`catalog.pricingPerUnit[0]` com `catalog.unitPriceLabel`) e a descrição (`catalog.kitGroupDescription`).
+- Os sabores vêm de `getProductKit(id).kitComponents`. Confira a escolha com `kitPicksProblem(picks, cota)`
+  antes de enviar: a API recusa cota errada com `MISSING_ITEMS_ERROR`, sem dizer o motivo.
+- No carrinho o kit vai sem `productId`/`productVariantId`, e o `price` é o do kit:
+
+```ts
+await client.createCart([{
+  kit: { productKitId, picks: [{ productId: a, productVariantId: va, quantity: 2 }] },
+  price: kitPrice, quantity: 1,
+}]);
+```
+
+  Os itens do carrinho e do pedido trazem `kitItemConfigurations` (`null` fora de kit).
+  `buildOrderItems` já repassa o kit ao `placeOrder`.
+- `fetchKitTemplate(product.publishedUrl)` lê `kitDisplay` e `relatedKits` do template publicado (`null`
+  se falhar). Use o `publishedUrl` só para ler, nunca como canonical.
+
 ### Feedback ao cliente final (PT-BR)
 
 - `friendlyError(err)` — o código do erro (`DISCOUNT_EXPIRED_ERROR`, o corpo OAuth do login por

@@ -3,7 +3,7 @@
 ### v0.4.0 — os dados de kit chegam ao SDK
 
 **Nada quebrou.** Os exports e as assinaturas de 0.3.0 continuam no lugar: atualizar é só o
-`npm install`. Tudo o que entrou é aditivo — um método novo, campos novos nas seleções e tipos
+`npm install`. Tudo o que entrou é aditivo — métodos novos, campos novos nas seleções e tipos
 novos. O `getCatalog` continua com a mesma carga de antes.
 
 - **`getProductKit(productId)` entrou.** Devolve o kit com a cota (`requiredPicksPerGroup`), a
@@ -20,6 +20,37 @@ novos. O `getCatalog` continua com a mesma carga de antes.
 - **Tipos novos:** `ProductKit`, `ProductKitComponent`, `ProductKitComponentConfiguration`,
   `ProductKitRelatedInfo`, `ProductKitItemInput` e `RecurringOrderItem`; `CatalogProduct` ganha
   `requiredPicksPerGroup`, `kitGroupDescription` e `relatedInfo`, opcionais.
+- **`getProductBySlug` traz o que a PDP de kit precisa:** `erpCode`, `requiredPicksPerGroup`,
+  `kitGroupDescription`, `relatedInfo` e o `group` com os `linkedProducts` (as outras opções do
+  bundle, cada uma com `slug`, `label`, preço e cota). Em produto que não é kit, `group` e os campos
+  de kit vêm vazios.
+- **E o que a PDP precisa para mostrar cada opção do bundle.** `getProductBySlug` também devolve, no
+  produto e em cada `linkedProducts[].catalog`: `pricing[].minCompareAtPrice` (o preço "de",
+  riscado), `pricingPerUnit` com `unitPriceLabel` ("R$ 14,00 / dose") e, nas opções,
+  `kitGroupDescription` (a descrição de cada uma: sem ela todas herdavam a do grupo). O `kitOptions`
+  repassa tudo isso, inclusive para o kit atual, e **deixa de fora a opção oculta no painel** (ela segue
+  vinculada ao grupo, mas a página dela dá 404). Em produto que não é kit os campos novos vêm `null`.
+  O `getCatalog` segue sem eles.
+- **O carrinho aceita kit.** `CartItemInput` virou `CartProductItemInput | CartKitItemInput`; o kit
+  entra como `{ kit: { productKitId, picks }, price, quantity }` e vai à API **sem**
+  `productConfiguration`. O `price` é o do kit, não a soma dos sabores. `createCart`,
+  `addCartItems`, `getCart` e `selectShipping` passam a devolver `kitItemConfigurations` em cada item
+  (`null` fora de kit).
+- **O `placeOrder` não perde o kit.** `buildOrderItems` devolve o item de kit como
+  `productKitConfiguration`, sem `productConfiguration` (que vem `null` no kit). Esse caminho não foi
+  exercitado com um pedido real: confira num pedido de teste antes de ir ao ar.
+- **O pedido mostra os sabores.** `getOrder` e `order()` do cliente trazem `kitItemConfigurations` nos
+  itens, na seleção completa (a enxuta, de reserva, continua sem ele).
+- **Kit novo em `kit.ts`:** `groupKitsByTitle` (bundle = kits de mesmo título),
+  `kitOptions(product)` (vinculados mais o kit atual, do mais barato ao mais caro),
+  `fetchKitTemplate(publishedUrl)` (lê `kitDisplay` e `relatedKits` do template publicado; qualquer
+  falha devolve `null`) e `kitPicksProblem(picks, cota)` (mensagem em português para a escolha
+  incompleta ou passada da cota).
+- **Cota errada na API volta como `MISSING_ITEMS_ERROR`**, que o `friendlyError` traduz como "produtos
+  não estão mais disponíveis". Valide antes com `kitPicksProblem`.
+- **Tipos novos:** `LinkedProduct`, `ProductKitGroup`, `KitDisplaySettings`, `RelatedKitsSettings`,
+  `KitTemplateSettings`, `CartProductItemInput` e `CartKitItemInput`; `PlaceOrderParams.items` aceita
+  `productKitConfiguration` e `productConfiguration` nulo. Constante nova: `KIT_ITEM`.
 
 ### v0.3.0 — o catálogo passa a responder sobre assinatura
 

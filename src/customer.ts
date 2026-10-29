@@ -13,7 +13,7 @@
 // schema declara explicitamente (uma conta pode assinar em mais de uma loja do mesmo parceiro).
 
 import { UnboxError, withFulfillmentGroupAddress, type UnboxClient } from "./client.js";
-import { withLeanSelection, normalizeThumbnails, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
+import { withLeanSelection, normalizeThumbnails, KIT_ITEM, ITEM_IMAGES, DETAILED_SUMMARY, SHIPPING_AND_TRACKING } from "./order.js";
 import type { AddressInput, ProductKitItemInput } from "./types.js";
 
 const RECURRING_FIELDS = `
@@ -158,7 +158,7 @@ export class UnboxCustomerClient {
           status type trackingCode
           ${rica ? SHIPPING_AND_TRACKING : ""}
           ${endereco}
-          items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}}}
+          items{nodes{_id title variantTitle quantity ${ITEM_IMAGES} productSlug price{amount displayAmount} subtotal{displayAmount} productConfiguration{productId productVariantId}${rica ? ` ${KIT_ITEM}` : ""}}}
         }
         recurringOrderId generatedNewRecurringOrder }}`;
     const vars = { referenceId };
