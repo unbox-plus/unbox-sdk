@@ -227,6 +227,49 @@ await check('corpo HTTP com "token expired" não dispara renovação nem repete 
   assert.equal(f.count("gql"), 1, "repetiu a mutation");
 });
 
+// ── Renovação só em sessão inequívoca ──────────────────────────────────────────────
+// Recusa da operação com "token", "expired" ou "401" no texto NÃO é sessão: renovar e repetir um
+// placeOrder recusado depois da captura cria o segundo pedido e cobra de novo.
+for (const message of [
+  "DISCOUNT_EXPIRED_ERROR",
+  "Invalid card token",
+  "card token expired",
+  "Adquirente: erro 401 na captura",
+  "ACCESS_DENIED",
+]) {
+  await check(`placeOrder recusado com "${message}" não renova nem repete`, async () => {
+    const f = installFetch({ signIn: okSignIn, gql: () => ({ body: { errors: [{ message }] } }) });
+    const store = connectUnboxStore({ ...creds, authScheme: "raw" });
+    const err = await store.withStoreClient((c) => c.gql("mutation{ placeOrder }")).then(() => null, (e) => e);
+    assert.ok(err instanceof UnboxError, String(err));
+    assert.equal(f.count("signIn"), 1, "renovou");
+    assert.equal(f.count("gql"), 1, "repetiu a mutation");
+  });
+}
+
+await check("extensions.code UNAUTHENTICATED renova uma vez", async () => {
+  const f = installFetch({
+    signIn: okSignIn,
+    gql: (n) => (n === 0
+      ? { body: { errors: [{ message: "x", extensions: { code: "UNAUTHENTICATED" } }] } }
+      : { body: { data: { ok: true } } }),
+  });
+  const store = connectUnboxStore({ ...creds, authScheme: "raw" });
+  const data = await store.withStoreClient((c) => c.gql("query{ ok }"));
+  assert.deepEqual(data, { ok: true });
+  assert.equal(f.count("signIn"), 2);
+  assert.equal(f.count("gql"), 2);
+});
+
+await check("HTTP 401 sem errors[] renova uma vez, e só uma", async () => {
+  const f = installFetch({ signIn: okSignIn, gql: () => ({ status: 401, body: { message: "Unauthorized" } }) });
+  const store = connectUnboxStore({ ...creds, authScheme: "raw" });
+  const err = await store.withStoreClient((c) => c.gql("query{ ok }")).then(() => null, (e) => e);
+  assert.equal(err?.code, "HTTP_401");
+  assert.equal(f.count("signIn"), 2);
+  assert.equal(f.count("gql"), 2);
+});
+
 // ── Sem authScheme: o comportamento de sempre ──────────────────────────────────────
 // Por último: este caso memoriza "bearer" no módulo, de propósito.
 await check("sem authScheme: consulta recusada repete com Bearer, como antes", async () => {
