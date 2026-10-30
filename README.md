@@ -160,15 +160,18 @@ Kit é o produto em que o cliente escolhe sabores até completar uma cota.
 - `getProductKit(productId)` devolve o `ProductKit` com `kitComponents` (os sabores possíveis:
   `productId`, `productVariantId`, `label`, `price`...), ou `null` se o id não existe.
 - O item da assinatura (`subscription()`) traz `productKitId` e `productKitItemsConfigurations`
-  (`null` fora de kit). Para editar, passe os dois em `updateItems`:
+  (`null` fora de kit). Para editar, passe os dois em `updateItems` (sem `productId`/`variantId`):
 
 ```ts
 await customer.updateItems(recurringOrderId, [{
-  productId, variantId, quantity: 1,
-  productKitId,
+  productKitId, quantity: 1,
   productKitItemsConfigurations: [{ productId: a, productVariantId: va, quantity: 2 }],
 }]);
 ```
+
+O `updateItems` envia o item de kit só com o kit e os sabores (sem `productId`/`variantId`), que é o
+formato que o backend aceita. Por isso o item de kit da assinatura volta de `subscription()` com
+`productId` e `variantId` nulos: o produto do kit é o `productKitId`.
 
 Página de kit (PDP) e carrinho:
 
