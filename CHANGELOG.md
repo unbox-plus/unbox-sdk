@@ -1,5 +1,19 @@
 ## Changelog
 
+### v0.4.1 — o item de kit sai do `updateItems` só com o kit e os sabores
+
+**Nada quebrou.** Os exports e as assinaturas de 0.4.0 continuam no lugar: atualizar é só o
+`npm install`. Item que não é kit segue com o mesmo payload de antes.
+
+- **`updateItems` envia o item de kit sem `productId` e `variantId`.** Com os dois junto de
+  `productKitId`, o backend recusava a lista inteira (`"recurringOrderItems[N]" does not match any
+  of the allowed types`). Agora o item de kit vai só com `productKitId`,
+  `productKitItemsConfigurations`, `quantity` e `skipNextCycle`; se `productId`/`variantId` vierem
+  num item de kit, são descartados. `productId` e `variantId` viraram opcionais no tipo, porque o
+  kit não os tem.
+- **`subscription()` devolve o item de kit com `productId` e `variantId` nulos.** O produto do kit
+  é o `productKitId`; quem lê a assinatura para exibir ou reeditar deve usar esse campo.
+
 ### v0.4.0 — os dados de kit chegam ao SDK
 
 **Nada quebrou.** Os exports e as assinaturas de 0.3.0 continuam no lugar: atualizar é só o
