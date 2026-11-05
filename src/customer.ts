@@ -210,14 +210,20 @@ export class UnboxCustomerClient {
   cancel(recurringOrderId: string) {
     return this.gql(`mutation($id:String!){customerCancelRecurringOrder(recurringOrderId:$id){${RECURRING_FIELDS}}}`, { id: recurringOrderId });
   }
-  /** Trocar itens/quantidade. */
+  /** Trocar itens/quantidade. Produto comum vai com `productId`/`variantId`; item de KIT vai só com
+   *  `productKitId` e `productKitItemsConfigurations` (o SDK descarta `productId`/`variantId` se vierem). */
   updateItems(recurringOrderId: string, items: Array<{
-    productId: string; variantId: string; quantity: number; skipNextCycle?: boolean;
+    productId?: string; variantId?: string; quantity: number; skipNextCycle?: boolean;
     /** Item de KIT: id do kit e os sabores escolhidos. Omitidos (`undefined`), nem vão no payload. */
     productKitId?: string | null; productKitItemsConfigurations?: ProductKitItemInput[];
   }>) {
     const q = `mutation($i:UpdateRecurringOrderItemsInput){customerUpdateRecurringOrderItems(input:$i){${RECURRING_FIELDS}}}`;
-    return this.gql(q, { i: { recurringOrderId, recurringOrderItems: items.map((x) => ({ ...x, skipNextCycle: x.skipNextCycle ?? false })) } });
+    const recurringOrderItems = items.map(({ productId, variantId, ...x }) => ({
+      ...(x.productKitId ? {} : { productId, variantId }),
+      ...x,
+      skipNextCycle: x.skipNextCycle ?? false,
+    }));
+    return this.gql(q, { i: { recurringOrderId, recurringOrderItems } });
   }
   /** Trocar cartão da assinatura. */
   updateCard(recurringOrderId: string, card: { holderName: string; cardNumber: string; expirationMonth: string; expirationYear: string; securityCode: string }) {

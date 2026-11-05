@@ -189,8 +189,8 @@ export function connectUnboxStore(
       return await fn(client);
     } catch (e) {
       if (!isAuthExpired(e)) throw e;
-      // Uma vez só, e só em falha de AUTENTICAÇÃO: repetir por qualquer erro seria repetir um
-      // placeOrder recusado, que é criar o segundo pedido e cobrar duas vezes.
+      // Uma vez só, e só em falha de SESSÃO inequívoca (ver isAuthExpired): repetir por qualquer
+      // outro erro seria repetir um placeOrder recusado, que é criar o segundo pedido e cobrar duas vezes.
       const c = await getCachedToken(true);
       client.setToken(c.token);
       return fn(client);
@@ -256,12 +256,18 @@ export async function loadAllCatalogItems(
 }
 
 /** Recusa que é de TOKEN VENCIDO, e não da operação: só ela justifica repetir a chamada.
- *  "Unauthorized - No authenticated user" é a forma que o gateway de parceiros usa. */
+ *
+ *  LISTA FECHADA, e não "tem token ou expired no texto". `DISCOUNT_EXPIRED_ERROR` (cupom vencido)
+ *  e o erro de token de cartão da adquirente também têm, e repetir um placeOrder recusado depois
+ *  da captura é o segundo pedido e a segunda cobrança. Renova só em:
+ *  - "Unauthorized - No authenticated user", a forma que o gateway de parceiros usa;
+ *  - `UNAUTHENTICATED` na mensagem ou no `code`;
+ *  - `HTTP_401`, o 401 sem `errors[]` (ver httpError em client.ts).
+ *  Forma de sessão fora da lista faz a chamada falhar uma vez; o vencimento normal nem chega
+ *  aqui, porque o cache renova antes (RENEW_BUFFER_MS). */
 function isAuthExpired(e: unknown): boolean {
-  if (e instanceof UnboxError) {
-    const msg = (e.errors?.[0]?.message ?? e.message ?? "").toUpperCase();
-    return /ACCESS_DENIED|UNAUTHENTICATED|NO AUTHENTICATED USER|TOKEN|EXPIRED|401/.test(msg);
-  }
-  if (e instanceof Error) return /401|ACCESS_DENIED/i.test(e.message);
-  return false;
+  if (!(e instanceof UnboxError)) return false;
+  if (e.code === "HTTP_401") return true;
+  const msg = `${e.errors?.[0]?.message ?? e.message ?? ""} ${e.code ?? ""}`.toUpperCase();
+  return /NO AUTHENTICATED USER|UNAUTHENTICATED/.test(msg);
 }

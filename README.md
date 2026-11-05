@@ -91,7 +91,7 @@ shopId**. As duas exceções são campos que o próprio schema declara: o `shopI
 
 | Método | Para |
 |---|---|
-| `withStoreClient(fn)` | roda `fn` com o client de loja e repete **uma vez**, com token novo, se o token tinha vencido (inclusive a recusa `Unauthorized - No authenticated user` do gateway) |
+| `withStoreClient(fn)` | roda `fn` com o client de loja e repete **uma vez**, com token novo, só se a recusa for de sessão: `Unauthorized - No authenticated user`, `UNAUTHENTICATED` ou HTTP 401. Recusa da operação (cupom vencido, cartão recusado, token de cartão) sobe sem repetir, e é isso que impede um `placeOrder` cobrado duas vezes |
 | `getStoreClient()` | o client cru, já autenticado |
 | `getShopContext()` | `{ shopId, shopSlug }` resolvidos (credencial explícita ganha; senão sai do claim do token) |
 | `getCustomerClient(token)` | client da área do cliente; `null` se o token estiver ausente ou vencido |
@@ -160,15 +160,18 @@ Kit é o produto em que o cliente escolhe sabores até completar uma cota.
 - `getProductKit(productId)` devolve o `ProductKit` com `kitComponents` (os sabores possíveis:
   `productId`, `productVariantId`, `label`, `price`...), ou `null` se o id não existe.
 - O item da assinatura (`subscription()`) traz `productKitId` e `productKitItemsConfigurations`
-  (`null` fora de kit). Para editar, passe os dois em `updateItems`:
+  (`null` fora de kit). Para editar, passe os dois em `updateItems` (sem `productId`/`variantId`):
 
 ```ts
 await customer.updateItems(recurringOrderId, [{
-  productId, variantId, quantity: 1,
-  productKitId,
+  productKitId, quantity: 1,
   productKitItemsConfigurations: [{ productId: a, productVariantId: va, quantity: 2 }],
 }]);
 ```
+
+O `updateItems` envia o item de kit só com o kit e os sabores (sem `productId`/`variantId`), que é o
+formato que o backend aceita. Por isso o item de kit da assinatura volta de `subscription()` com
+`productId` e `variantId` nulos: o produto do kit é o `productKitId`.
 
 Página de kit (PDP) e carrinho:
 
