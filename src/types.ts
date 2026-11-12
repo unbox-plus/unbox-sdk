@@ -276,6 +276,13 @@ export interface CartResult {
   }>;
 }
 
+/** Retorno de `setCartRecurringFrequency` (payload do `updateCart`). */
+export interface CartRecurringFrequencyResult {
+  cart: { _id: string; recurringItemsFrequencyId: string | null };
+  /** `data` é AWSJSON: chega como string. */
+  cartEvents?: Array<{ type: string; data?: string | null }> | null;
+}
+
 export type PaymentType = "pix" | "credit" | "boleto";
 
 /** Fingerprint antifraude/3DS exigido pela Unbox no placeOrder. Vai no NÍVEL RAIZ do

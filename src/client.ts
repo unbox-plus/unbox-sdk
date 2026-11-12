@@ -29,7 +29,7 @@
 // medição nem memória, fixa com `authScheme` (ver gql()).
 
 import type {
-  UnboxConfig, AddressInput, CartItemInput, CartResult,
+  UnboxConfig, AddressInput, CartItemInput, CartResult, CartRecurringFrequencyResult,
   PlaceOrderParams, FulfillmentOption, CatalogProduct, Connection, SubscribableProduct,
   PaymentLinkConstraints, PaymentLinkItemInput, DeviceInput, SimpleInventoryInfo, ProductKit,
 } from "./types.js";
@@ -506,7 +506,8 @@ export class UnboxClient {
   // -------------------------------------------------------------------- carrinho
   // ⚠️ Schema LIVE: `recurringItemsFrequencyId` NÃO existe em CreateCartInput/AddCartItemsInput
   //    (diverge da doc — vale o live). Itens de assinatura marcam-se só com `isRecurring:true`;
-  //    a FREQUÊNCIA vai no placeOrder (orderRecurrence.recurringItemsFrequencyId).
+  //    a FREQUÊNCIA entra no carrinho DEPOIS, com setCartRecurringFrequency (é dali que o checkout
+  //    hospedado da Unbox a lê), e continua indo no placeOrder (orderRecurrence.recurringItemsFrequencyId).
   async createCart(items: CartItemInput[]): Promise<CartResult> {
     const q = `mutation($i:CreateCartInput!){ createCart(input:$i){
       token
@@ -550,6 +551,35 @@ export class UnboxClient {
       cart{ _id totalItemQuantity } cartEvents{type data} }}`;
     const d = await this.gql<{ updateCartItemsQuantity: any }>(q, { i: { cartId, cartToken, items: [{ cartItemId, quantity }] } });
     return d.updateCartItemsQuantity;
+  }
+
+  /**
+   * Grava a frequência da assinatura NO CARRINHO (`updateCart`). `null` limpa o campo — use quando
+   * o carrinho deixa de ter item recorrente.
+   *
+   * Por que existe: o checkout HOSPEDADO da Unbox lê a frequência de `cart.recurringItemsFrequencyId`
+   * e ignora cookie e `?freq=` da URL. Sem esta gravação, o carrinho de assinatura chega lá como
+   * "Frequência: Não selecionada", já com o preço de assinante. O campo não existe em
+   * CreateCartInput/AddCartItemsInput: só aqui, depois do create/add.
+   *
+   * Não substitui o `recurrence` do placeOrder (checkout próprio): ele continua obrigatório.
+   * O servidor NÃO confere a frequência contra `shop.recurringOrdersPolicy.allowedFrequencies`;
+   * mande só id que veio de lá.
+   *
+   * Só a frequência vai no input: `paymentMethod`/`numberOfInstallments` omitidos ficam intactos no
+   * carrinho (com `null` o servidor os apagaria). String vazia lança antes da rede — o servidor a
+   * ignoraria e responderia sucesso com o valor antigo; para limpar, `null`.
+   */
+  async setCartRecurringFrequency(
+    cartId: string, cartToken: string, recurringItemsFrequencyId: string | null,
+  ): Promise<CartRecurringFrequencyResult> {
+    if (recurringItemsFrequencyId !== null && !recurringItemsFrequencyId?.trim()) {
+      throw new UnboxError("setCartRecurringFrequency exige recurringItemsFrequencyId (ou null para limpar)");
+    }
+    const q = `mutation($i:UpdateCartInput!){ updateCart(input:$i){
+      cart{ _id recurringItemsFrequencyId } cartEvents{type data} }}`;
+    const d = await this.gql<{ updateCart: CartRecurringFrequencyResult }>(q, { i: { cartId, cartToken, recurringItemsFrequencyId } });
+    return d.updateCart;
   }
 
   /** Remove itens do carrinho (cartItemIds = node._id dos itens). */

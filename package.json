@@ -1,6 +1,6 @@
 {
   "name": "@unbox-plus/sdk",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "SDK oficial da API de parceiros da Unbox (headless commerce): catálogo, carrinho, checkout, pedido, área do cliente, assinaturas e webhooks",
   "author": {
     "name": "Unbox Development Team",
@@ -40,7 +40,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prepublishOnly": "npm run build",
+    "test": "npm run build && node tools/run-checks.mjs",
+    "prepack": "npm test",
     "release": "node tools/github-release.mjs"
   },
   "devDependencies": {

@@ -131,7 +131,7 @@ connectUnboxStore({ ...credentialsFromEnv(env), authScheme: "raw" });
 - **Catálogo**: `getCatalog`, `getProductBySlug`, `getProductById`, `getProductsByIds`, `getProductKit`, `getSubscribableCatalog`, `getTags`, `getSimpleInventory`
 - **Loja**: `getShop`, `getPaymentMethods`, `listDiscountCodes`, `findDiscountIdByCode`
 - **Carrinho**: `createCart`, `addCartItems`, `updateItemQuantity`, `removeCartItems`, `getCart`,
-  `setEmailOnCart`, `applyDiscount`, `removeDiscount`, `createCartByTemplate`
+  `setEmailOnCart`, `setCartRecurringFrequency`, `applyDiscount`, `removeDiscount`, `createCartByTemplate`
 - **Entrega**: `setShippingAddress`, `getFulfillmentGroupIds`, `quoteShipping`, `selectShipping`,
   `quoteShippingForProduct`, `getAddressByPostalCode`
 - **Checkout**: `getInstallments`, `buildOrderItems`, `placeOrder`, `getOrder`
@@ -139,6 +139,20 @@ connectUnboxStore({ ...credentialsFromEnv(env), authScheme: "raw" });
 - **Payment links**: `createPaymentLink`, `getPublicPaymentLink`
 - **Webhooks**: `subscribeWebhook`
 - **Cru**: `gql(query, variables, opts)` para o que não tem método
+
+#### Assinatura: onde mora a frequência
+
+Item de assinatura é `isRecurring: true` no `createCart`/`addCartItems`, mas a frequência não cabe
+nesses inputs. Ela vai em dois lugares, e os dois são necessários:
+
+- **No carrinho**, com `setCartRecurringFrequency(cartId, cartToken, frequencyId)` logo depois do
+  create/add. É dali que o checkout hospedado da Unbox lê a frequência; sem isso ele abre a
+  assinatura como "Frequência: Não selecionada". `null` limpa o campo (o carrinho deixou de ter item
+  recorrente). O servidor não confere o id contra `allowedFrequencies`: mande só um que veio de lá.
+- **No `placeOrder`**, em `recurrence.recurringItemsFrequencyId`, quando o checkout é o da loja.
+  Sem ele o pedido sai como compra avulsa, sem erro.
+
+`getCart` devolve `recurringItemsFrequencyId` para conferir o que está gravado.
 
 ### `UnboxCustomerClient` — a área do cliente
 
