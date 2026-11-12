@@ -1,5 +1,23 @@
 ## Changelog
 
+## próxima versão
+
+**Nada quebrou.** Os exports e as assinaturas de 0.4.1 continuam no lugar: atualizar é só o
+`npm install`. O que entrou é aditivo: um método e um tipo.
+
+- **`setCartRecurringFrequency(cartId, cartToken, frequencyId)` entrou.** Grava a frequência da
+  assinatura no carrinho (`updateCart`). O checkout hospedado da Unbox lê a frequência dali e ignora
+  cookie e `?freq=`: sem esta chamada, o carrinho de assinatura chega lá com "Frequência: Não
+  selecionada", já com o preço de assinante. Chame-a logo depois do `createCart`/`addCartItems`,
+  que não aceitam o campo.
+- **`null` limpa a frequência**, para o carrinho que deixou de ter item recorrente. String vazia
+  lança `UnboxError` antes da rede: o servidor a ignoraria e responderia sucesso com o valor antigo.
+- **O input leva só a frequência.** `paymentMethod` e `numberOfInstallments` já gravados no carrinho
+  ficam como estão.
+- **Não substitui o `recurrence` do `placeOrder`.** No checkout da própria loja ele continua
+  obrigatório; sem ele o pedido sai avulso.
+- **Tipo novo:** `CartRecurringFrequencyResult`.
+
 ### v0.4.1 — o item de kit sai do `updateItems` só com o kit e os sabores
 
 **Nada quebrou.** Os exports e as assinaturas de 0.4.0 continuam no lugar: atualizar é só o
