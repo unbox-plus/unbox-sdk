@@ -1,6 +1,6 @@
 ## Changelog
 
-### próxima versão
+### v0.5.0 — a frequência da assinatura vai para o carrinho
 
 **Nada quebrou.** Os exports e as assinaturas de 0.4.1 continuam no lugar: atualizar é só o
 `npm install`. O que entrou é aditivo: um método e um tipo.
