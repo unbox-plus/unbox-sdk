@@ -20,9 +20,9 @@ nova só chega à CLI e às lojas com bump explícito lá. Por isso:
 
 - **Não mexer na versão do `package.json`/`package-lock.json`.** O bump é o primeiro passo do release, e só
   acontece quando o usuário pede o release.
-- **O CHANGELOG ganha uma seção `## próxima versão`** logo abaixo de `## Changelog`, no topo. Toda mudança
-  que entra em `develop` escreve ali o seu texto, no mesmo estilo dos blocos publicados; se a seção já existe,
-  acrescente nela (nunca uma segunda). O `tools/github-release.mjs` recusa publicar enquanto ela existir.
+- **O CHANGELOG ganha uma seção `### próxima versão`** logo abaixo de `## Changelog`, no topo (mesmo nível
+  das versões publicadas). Toda mudança que entra em `develop` escreve ali o seu texto, no mesmo estilo dos
+  blocos publicados; se a seção já existe, acrescente nela (nunca uma segunda). O `tools/github-release.mjs` recusa publicar enquanto ela existir.
 - `npm test` verde: faz o build e roda todas as checagens `tools/check-*.mjs` contra o `dist/`
   (`tools/run-checks.mjs`). Não há suíte de testes; checagem nova é um `tools/check-<assunto>.mjs` que sai
   com código ≠ 0 se falhar, e entra no `npm test` sozinha.
@@ -32,9 +32,9 @@ nova só chega à CLI e às lojas com bump explícito lá. Por isso:
 ## Ao fechar uma versão (só quando o usuário pedir o release)
 
 1. bump da versão em `package.json` e no lock: `npm version X.Y.Z --no-git-tag-version`;
-2. renomear `## próxima versão` para `### vX.Y.Z — descrição curta` (é o título do release no GitHub; o
+2. trocar o título `### próxima versão` por `### vX.Y.Z — descrição curta` (é o título do release no GitHub; o
    `github-release.mjs` recusa título fora desse formato ou versão diferente da do `package.json`);
-3. `npm test` verde (também roda no `prepack` e no workflow de publicação: sem ele não há pacote);
+3. `npm test` verde (roda também no `prepack`, e por isso no `npm publish` do workflow: sem ele não há pacote);
 4. com tudo em `main` e a árvore limpa, `npm run release`: lê o bloco do CHANGELOG em `origin/main`, confere a
    versão, cria a tag (sem o "v") no SHA de `main` e o release no GitHub. O workflow
    `.github/workflows/npm-publish.yml` publica no npm, com provenance, quando o release sai.

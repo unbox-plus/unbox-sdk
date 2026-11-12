@@ -1,6 +1,6 @@
 ## Changelog
 
-## próxima versão
+### próxima versão
 
 **Nada quebrou.** Os exports e as assinaturas de 0.4.1 continuam no lugar: atualizar é só o
 `npm install`. O que entrou é aditivo: um método e um tipo.

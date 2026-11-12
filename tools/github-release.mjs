@@ -30,7 +30,7 @@
 //     desatualizada, e adivinhar qual é justamente o que não se deve fazer aqui;
 //   • a tag já existe no remoto, ou já existe release com ela;
 //   • o título do bloco não está no formato `vX.Y.Z — descrição`.
-//   • o CHANGELOG ainda tem a seção `## próxima versão` (a versão não foi fechada).
+//   • o CHANGELOG ainda tem a seção `### próxima versão` (a versão não foi fechada).
 //
 // E a última palavra é de quem roda: a prévia sai completa na tela e o release só é criado
 // depois do "sim". `--sim` pula a pergunta (para CI), `--previa` nunca cria nada.
@@ -131,14 +131,15 @@ function primeiroBloco(texto) {
   return { titulo: linhas[iTitulo].replace(/^### /, "").trim(), corpo };
 }
 
-// `## próxima versão` é onde o que entrou em `develop` espera o release (ver CLAUDE.md). Se ela
-// ainda está em `main`, ninguém fechou a versão: o primeiro `###` seria o release ANTERIOR, e o
-// que entrou nesta versão ficaria fora das notas.
+// `### próxima versão` é onde o que entrou em `develop` espera o release (ver CLAUDE.md). Se ela
+// ainda está em `main`, ninguém fechou a versão. Ela seria o primeiro bloco, e a recusa sairia
+// adiante como "título não começa com uma versão", sem dizer o que fazer: por isso a checagem
+// própria, antes, com a instrução.
 const changelog = arquivoDaRef("CHANGELOG.md");
-if (/^## pr[oó]xima\b/im.test(changelog)) {
+if (/^###? pr[oó]xima\b/im.test(changelog)) {
   abortar(
-    "o CHANGELOG.md ainda tem a seção `## próxima versão`.",
-    "Renomeie-a para `### vX.Y.Z — descrição` (com a versão do package.json) antes de publicar.",
+    "o CHANGELOG.md ainda tem a seção `### próxima versão`.",
+    "Troque o título por `### vX.Y.Z — descrição` (com a versão do package.json) antes de publicar.",
   );
 }
 const bloco = primeiroBloco(changelog);
